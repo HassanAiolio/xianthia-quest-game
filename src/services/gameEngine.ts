@@ -62,7 +62,9 @@ async function callGemini(userMessage: string): Promise<string> {
     body: JSON.stringify({
       system_instruction: { parts: [{ text: NARRATOR_PROMPT }] },
       contents: [{ role: "user", parts: [{ text: userMessage }] }],
-      generationConfig: { temperature: 0.9, maxOutputTokens: 256 },
+      // INCREASED maxOutputTokens from 256 to 512 so it doesn't get cut off!
+      // LOWERED temperature to 0.7 to make it follow formatting rules better.
+      generationConfig: { temperature: 0.7, maxOutputTokens: 512 }, 
     }),
   });
 
@@ -76,23 +78,44 @@ async function callGemini(userMessage: string): Promise<string> {
 }
 
 function parseGeminiResponse(raw: string): ActionResult {
-  const actionMatch = raw.match(/<action>([\s\S]*?)<\/action>/);
-  const narrativeMatch = raw.match(/<narrative>([\s\S]*?)<\/narrative>/);
+  // Use 'i' flag for case-insensitivity just in case
+  const actionMatch = raw.match(/<action>([\s\S]*?)<\/action>/i);
+  const narrativeMatch = raw.match(/<narrative>([\s\S]*?)<\/narrative>/i);
 
   let effects: ActionResult["effects"] = {};
   if (actionMatch) {
     try {
-      const parsed = JSON.parse(actionMatch[1]);
+      // Clean up markdown blockticks if the AI disobeys the prompt
+      const cleanJson = actionMatch[1].replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsed = JSON.parse(cleanJson);
       effects = {
         hpDelta: parsed.hpDelta ?? 0,
         mpDelta: parsed.mpDelta ?? 0,
         xpDelta: parsed.xpDelta ?? 0,
       };
-    } catch { /* malformed JSON, skip effects */ }
+    } catch (e) { 
+      console.warn("Failed to parse action JSON", e); 
+    }
+  }
+
+  let finalMessage = "";
+  
+  if (narrativeMatch && narrativeMatch[1].trim()) {
+    // 1. Ideal Scenario: It used the narrative tags correctly
+    finalMessage = narrativeMatch[1].trim();
+  } else {
+    // 2. Fallback Scenario: Strip out the action block and show what's left
+    finalMessage = raw.replace(/<action>[\s\S]*?<\/action>/i, '').trim();
+    
+    // 3. Catastrophe Scenario: The AI got completely cut off mid-tag
+    if (finalMessage.includes('<action>')) {
+      finalMessage = finalMessage.split('<action>')[0].trim();
+      if (!finalMessage) finalMessage = "The Aether-Core stutters, processing your command...";
+    }
   }
 
   return {
-    message: makeLogMessage("AI", narrativeMatch?.[1]?.trim() ?? raw.trim()),
+    message: makeLogMessage("AI", finalMessage),
     effects,
   };
 }
