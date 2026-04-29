@@ -1,0 +1,209 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Xianthia Quest — Ethereal Cyberpunk Design System
+ * Obsidian backgrounds, glassmorphism, neon-gold + cyan accents.
+ */
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-ring-offset-background: var(--background);
+  --color-gold: var(--gold);
+  --color-gold-foreground: var(--gold-foreground);
+  --color-cyan: var(--cyan);
+  --color-cyan-foreground: var(--cyan-foreground);
+  --color-magenta: var(--magenta);
+  --color-hp: var(--hp);
+  --color-mp: var(--mp);
+  --color-xp: var(--xp);
+  --color-glass: var(--glass);
+  --color-glass-border: var(--glass-border);
+
+  --font-display: "Orbitron", "Space Grotesk", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+
+  --shadow-glow-gold: 0 0 24px color-mix(in oklch, var(--gold) 45%, transparent);
+  --shadow-glow-cyan: 0 0 24px color-mix(in oklch, var(--cyan) 45%, transparent);
+  --shadow-card: 0 8px 32px oklch(0 0 0 / 0.4);
+
+  --gradient-aurora: radial-gradient(
+      ellipse at 20% 10%,
+      color-mix(in oklch, var(--cyan) 22%, transparent) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 80% 80%,
+      color-mix(in oklch, var(--gold) 18%, transparent) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 50% 50%,
+      color-mix(in oklch, var(--magenta) 12%, transparent) 0%,
+      transparent 65%
+    );
+  --gradient-gold: linear-gradient(135deg, var(--gold), oklch(0.92 0.18 90));
+  --gradient-cyan: linear-gradient(135deg, var(--cyan), oklch(0.85 0.18 200));
+  --gradient-hp: linear-gradient(90deg, oklch(0.65 0.22 25), oklch(0.78 0.2 35));
+  --gradient-mp: linear-gradient(90deg, oklch(0.55 0.22 260), oklch(0.75 0.2 220));
+  --gradient-xp: linear-gradient(90deg, var(--gold), var(--cyan));
+
+  --animate-float: float 8s ease-in-out infinite;
+  --animate-pulse-glow: pulse-glow 3s ease-in-out infinite;
+  --animate-shimmer: shimmer 3s linear infinite;
+  --animate-fade-up: fade-up 0.5s ease-out;
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0) translateX(0); opacity: 0.5; }
+    50% { transform: translateY(-30px) translateX(15px); opacity: 1; }
+  }
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 16px color-mix(in oklch, var(--gold) 35%, transparent); }
+    50% { box-shadow: 0 0 32px color-mix(in oklch, var(--gold) 60%, transparent); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* Default to dark — this is a cyberpunk RPG */
+:root {
+  --radius: 0.75rem;
+
+  /* Obsidian base */
+  --background: oklch(0.14 0.02 270);
+  --foreground: oklch(0.95 0.02 90);
+
+  --card: oklch(0.18 0.025 270);
+  --card-foreground: oklch(0.95 0.02 90);
+  --popover: oklch(0.16 0.025 270);
+  --popover-foreground: oklch(0.95 0.02 90);
+
+  /* Neon gold = primary */
+  --primary: oklch(0.82 0.16 88);
+  --primary-foreground: oklch(0.14 0.02 270);
+
+  --secondary: oklch(0.24 0.03 270);
+  --secondary-foreground: oklch(0.95 0.02 90);
+
+  --muted: oklch(0.22 0.025 270);
+  --muted-foreground: oklch(0.68 0.04 250);
+
+  --accent: oklch(0.78 0.16 200);
+  --accent-foreground: oklch(0.14 0.02 270);
+
+  --destructive: oklch(0.65 0.24 22);
+  --destructive-foreground: oklch(0.98 0.01 90);
+
+  --border: oklch(0.32 0.04 250 / 0.5);
+  --input: oklch(0.22 0.03 270);
+  --ring: oklch(0.82 0.16 88);
+
+  /* Brand tokens */
+  --gold: oklch(0.85 0.16 88);
+  --gold-foreground: oklch(0.14 0.02 270);
+  --cyan: oklch(0.78 0.16 200);
+  --cyan-foreground: oklch(0.14 0.02 270);
+  --magenta: oklch(0.65 0.27 330);
+
+  --hp: oklch(0.7 0.22 25);
+  --mp: oklch(0.65 0.2 250);
+  --xp: oklch(0.85 0.16 88);
+
+  --glass: oklch(0.22 0.03 270 / 0.55);
+  --glass-border: oklch(0.85 0.05 200 / 0.18);
+}
+
+.dark {
+  /* Same — we're always dark */
+  --background: oklch(0.14 0.02 270);
+  --foreground: oklch(0.95 0.02 90);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+
+  html, body, #root { min-height: 100vh; }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    background-image:
+      radial-gradient(ellipse at top, color-mix(in oklch, var(--cyan) 8%, transparent), transparent 60%),
+      radial-gradient(ellipse at bottom, color-mix(in oklch, var(--gold) 6%, transparent), transparent 60%);
+    background-attachment: fixed;
+  }
+
+  h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: 0.02em; }
+}
+
+@layer utilities {
+  .glass {
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+  }
+  .glass-strong {
+    background: color-mix(in oklch, var(--card) 75%, transparent);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(20px) saturate(160%);
+  }
+  .text-gradient-gold {
+    background: var(--gradient-gold);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .text-gradient-aurora {
+    background: linear-gradient(135deg, var(--gold), var(--cyan), var(--magenta));
+    background-size: 200% 200%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 6s ease-in-out infinite;
+  }
+  .glow-gold { box-shadow: var(--shadow-glow-gold); }
+  .glow-cyan { box-shadow: var(--shadow-glow-cyan); }
+  .scanlines {
+    background-image: repeating-linear-gradient(
+      0deg,
+      transparent 0,
+      transparent 2px,
+      color-mix(in oklch, var(--cyan) 3%, transparent) 2px,
+      color-mix(in oklch, var(--cyan) 3%, transparent) 3px
+    );
+  }
+}
