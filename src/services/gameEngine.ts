@@ -1,7 +1,7 @@
 import type { Player, LogMessage } from "@/types/game";
 
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`;
-
+// const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`;
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const NARRATOR_PROMPT = `You are the "Aether-Core," the sentient AI Dungeon Master of Xianthia, a dark cyberpunk-fantasy world. Your tone is mysterious, atmospheric, and slightly cold but poetic.
 
 You will receive the player's stats, recent history, and their current action.
@@ -49,34 +49,37 @@ function detectIntent(input: string): Intent {
   return "explore";
 }
 
-async function callGemini(userMessage: string): Promise<string> {
-  const response = await fetch(GEMINI_URL, {
+async function callGroq(userMessage: string): Promise<string> {
+  const response = await fetch(GROQ_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
+    },
     body: JSON.stringify({
-      system_instruction: { parts: [{ text: NARRATOR_PROMPT }] },
-      contents: [{ role: "user", parts: [{ text: userMessage }] }],
-      generationConfig: { 
-        temperature: 0.7, 
-        maxOutputTokens: 800,
-        // THIS IS THE MAGIC BULLET: It forces Gemini to output pure JSON
-        responseMimeType: "application/json" 
-      }, 
+      model: "llama3-8b-8192", // Ultra-fast model
+      messages: [
+        { role: "system", content: NARRATOR_PROMPT },
+        { role: "user", content: userMessage }
+      ],
+      temperature: 0.7,
+      max_tokens: 800,
+      // Forces Groq to output pure JSON, exactly like Gemini did
+      response_format: { type: "json_object" } 
     }),
   });
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`Gemini API error: ${response.status} — ${err}`);
+    throw new Error(`Groq API error: ${response.status} — ${err}`);
   }
 
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  return data.choices?.[0]?.message?.content ?? "{}";
 }
 
-function parseGeminiResponse(raw: string): ActionResult {
+function parseAIResponse(raw: string): ActionResult {
   try {
-    // Because we forced responseMimeType, we can just parse it directly!
     const parsed = JSON.parse(raw);
     
     return {
@@ -88,13 +91,60 @@ function parseGeminiResponse(raw: string): ActionResult {
       }
     };
   } catch (e) {
-    console.error("Failed to parse Gemini JSON:", e, raw);
+    console.error("Failed to parse AI JSON:", e, raw);
     return {
       message: makeLogMessage("SYSTEM", "Aether-Core Error: Data stream corrupted."),
       effects: {}
     };
   }
 }
+
+// async function callGemini(userMessage: string): Promise<string> {
+//   const response = await fetch(GEMINI_URL, {
+//     method: "POST",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify({
+//       system_instruction: { parts: [{ text: NARRATOR_PROMPT }] },
+//       contents: [{ role: "user", parts: [{ text: userMessage }] }],
+//       generationConfig: { 
+//         temperature: 0.7, 
+//         maxOutputTokens: 800,
+//         // THIS IS THE MAGIC BULLET: It forces Gemini to output pure JSON
+//         responseMimeType: "application/json" 
+//       }, 
+//     }),
+//   });
+
+//   if (!response.ok) {
+//     const err = await response.text();
+//     throw new Error(`Gemini API error: ${response.status} — ${err}`);
+//   }
+
+//   const data = await response.json();
+//   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+// }
+
+// function parseGeminiResponse(raw: string): ActionResult {
+//   try {
+//     // Because we forced responseMimeType, we can just parse it directly!
+//     const parsed = JSON.parse(raw);
+    
+//     return {
+//       message: makeLogMessage("AI", parsed.narrative || "The Aether-Core processes your command in silence."),
+//       effects: {
+//         hpDelta: parsed.effects?.hpDelta ?? 0,
+//         mpDelta: parsed.effects?.mpDelta ?? 0,
+//         xpDelta: parsed.effects?.xpDelta ?? 0,
+//       }
+//     };
+//   } catch (e) {
+//     console.error("Failed to parse Gemini JSON:", e, raw);
+//     return {
+//       message: makeLogMessage("SYSTEM", "Aether-Core Error: Data stream corrupted."),
+//       effects: {}
+//     };
+//   }
+// }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -124,10 +174,10 @@ export async function calculateCombat(player: Player): Promise<CombatOutcome> {
 }
 
 export async function generateNPCResponse(): Promise<LogMessage> {
-  const raw = await callGemini(
+  const raw = await callGroq(
     "A mysterious NPC approaches the player. Generate a short cryptic greeting in character."
   );
-  const result = parseGeminiResponse(raw);
+  const result = parseAIResponse(raw);
   return result.message;
 }
 
@@ -168,8 +218,8 @@ Intent detected: ${intent}
 Narrate what happens and decide appropriate stat changes within the allowed ranges.`;
   }
 
-  // 1. Call the AI
-  const raw = await callGemini(prompt);
+// 1. Call the AI
+  const raw = await callGroq(prompt);
   
   // 2. PRINT THE PURE RAW OUTPUT TO THE BROWSER CONSOLE
   console.log("====== PURE AI RESPONSE ======");
@@ -177,5 +227,5 @@ Narrate what happens and decide appropriate stat changes within the allowed rang
   console.log("==============================");
 
   // 3. Parse it
-  return parseGeminiResponse(raw);
+  return parseAIResponse(raw);
 }
