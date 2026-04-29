@@ -30,8 +30,8 @@ const QUICK_ACTIONS = [
 ] as const;
 
 export function GameView() {
-  const { state, addLog, applyEffects, setGameState, reset, setLocation, addItem, removeItem } = useGameStore();
-  const { player, inventory, gameLog, currentLocation, quests } = state;
+  const { state, addLog, applyEffects, setGameState, reset, setLocation, addItem, removeItem, addQuest, updateQuest } = useGameStore();
+  const { player, inventory, gameLog, currentLocation, quests } = state; // make sure quests is destructured!
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
@@ -73,26 +73,22 @@ export function GameView() {
     
     setThinking(true);
     try {
-      // 1. Pass the new state variables to the engine
-      const result = await processAction(text, player, gameLog, inventory, currentLocation);
+      // 1. Pass quests to the engine
+      const result = await processAction(text, player, gameLog, inventory, currentLocation, quests);
       
-      // 2. Add the narrative
       addLog(result.message);
-      
-      // 3. Apply basic stats (HP, MP, XP)
       if (result.effects) applyEffects(result.effects);
+      if (result.locationChange?.name) setLocation(result.locationChange);
       
-      // 4. Change Location (Triggers new image generation!)
-      if (result.locationChange?.name) {
-         setLocation(result.locationChange);
-      }
+      if (result.inventoryChanges?.add) result.inventoryChanges.add.forEach(item => addItem(item));
+      if (result.inventoryChanges?.remove) result.inventoryChanges.remove.forEach(id => removeItem(id));
       
-      // 5. Manage Inventory
-      if (result.inventoryChanges?.add) {
-         result.inventoryChanges.add.forEach(item => addItem(item));
+      // Manage Quests
+      if (result.questChanges?.add) {
+         result.questChanges.add.forEach(q => addQuest(q));
       }
-      if (result.inventoryChanges?.remove) {
-         result.inventoryChanges.remove.forEach(id => removeItem(id));
+      if (result.questChanges?.update) {
+         result.questChanges.update.forEach(q => updateQuest(q.id, q.status));
       }
       
     } catch (error) {
@@ -114,15 +110,17 @@ export function GameView() {
   }
 
   return (
-    <div className="relative min-h-screen px-3 py-4 sm:px-6 sm:py-6">
+    // 1. Added lg:h-screen and flex/flex-col to lock it to the viewport on desktop
+    <div className="relative flex min-h-screen flex-col px-3 py-4 sm:px-6 sm:py-6 lg:h-screen lg:overflow-hidden">
       <div
         className="pointer-events-none absolute inset-0"
         style={{ background: "var(--gradient-aurora)" }}
       />
 
-      <div className="relative mx-auto grid max-w-[1500px] gap-4 lg:grid-cols-[280px_1fr_320px]">
+      {/* 2. Added flex-1 and lg:min-h-0 to let the grid fill remaining height */}
+      <div className="relative mx-auto flex w-full max-w-[1500px] flex-1 flex-col gap-4 lg:grid lg:min-h-0 lg:grid-cols-[280px_1fr_320px]">
         {/* LEFT — Vitals */}
-        <aside className="glass-strong order-2 flex flex-col gap-4 rounded-2xl p-4 lg:order-1">
+        <aside className="glass-strong order-2 flex flex-col gap-4 rounded-2xl p-4 lg:order-1 lg:overflow-y-auto [&::-webkit-scrollbar]:hidden">
           {/* Portrait */}
           <div className="relative aspect-square overflow-hidden rounded-xl border border-glass-border bg-gradient-to-br from-[oklch(0.2_0.05_270)] to-[oklch(0.12_0.03_290)]">
             <div className="absolute inset-0 scanlines opacity-30 z-10 pointer-events-none" />
@@ -194,9 +192,9 @@ export function GameView() {
         </aside>
 
         {/* CENTER — World */}
-        <main className="order-1 flex flex-col gap-4 lg:order-2">
+        <main className="order-1 flex flex-col gap-4 lg:order-2 lg:min-h-0">
           {/* Visualizer */}
-          <div className="glass-strong relative overflow-hidden rounded-2xl">
+          <div className="glass-strong relative shrink-0 overflow-hidden rounded-2xl">
             <div className="aspect-[16/7] relative bg-gradient-to-br from-[oklch(0.18_0.05_280)] via-[oklch(0.14_0.04_260)] to-[oklch(0.12_0.06_320)]">
               <div className="absolute inset-0 scanlines opacity-25" />
               {locationImage && (
@@ -218,8 +216,8 @@ export function GameView() {
           </div>
 
           {/* Narrative log */}
-          <div className="glass-strong flex min-h-[320px] flex-1 flex-col rounded-2xl">
-            <div className="flex items-center justify-between border-b border-glass-border px-4 py-2.5">
+          <div className="glass-strong flex flex-1 flex-col overflow-hidden rounded-2xl min-h-0">
+            <div className="flex shrink-0 items-center justify-between border-b border-glass-border px-4 py-2.5">
               <div className="text-xs uppercase tracking-[0.3em] text-cyan">
                 Narrative Log
               </div>
@@ -291,7 +289,7 @@ export function GameView() {
             </ScrollArea>
 
             {/* Command input */}
-            <div className="border-t border-glass-border p-3">
+            <div className="shrink-0 border-t border-glass-border p-3">
               <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                 {QUICK_ACTIONS.map((a) => (
                   <Button
@@ -328,7 +326,7 @@ export function GameView() {
         </main>
 
         {/* RIGHT — Data-Pad */}
-        <aside className="glass-strong order-3 rounded-2xl p-4">
+        <aside className="glass-strong order-3 flex flex-col rounded-2xl p-4 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden">
           <Tabs defaultValue="inventory" className="flex h-full flex-col">
             <TabsList className="grid w-full grid-cols-2 bg-black/30">
               <TabsTrigger value="inventory" className="data-[state=active]:bg-[color-mix(in_oklch,var(--gold)_15%,transparent)] data-[state=active]:text-[var(--gold)]">

@@ -66,6 +66,7 @@ type Action =
   | { type: "REMOVE_ITEM"; id: string }
   | { type: "SET_LOCATION"; value: Location }
   | { type: "ADD_QUEST"; value: Quest }
+  | { type: "UPDATE_QUEST"; id: string; status: "active" | "completed" } // <-- ADD THIS
   | { type: "RESET" }
   | { type: "HYDRATE"; value: GameSnapshot };
 
@@ -85,12 +86,30 @@ function reducer(state: GameSnapshot, action: Action): GameSnapshot {
     case "APPLY_EFFECTS": {
       if (!state.player) return state;
       const p = state.player;
+      
+      let newXp = Math.max(0, p.xp + (action.xpDelta ?? 0));
+      let newLevel = p.level;
+      let newMaxHp = p.maxHp;
+      let newMaxMp = p.maxMp;
+
+      // LEVEL UP LOGIC! Loop in case they gain massive XP at once
+      while (newXp >= 100) {
+        newLevel += 1;
+        newXp -= 100;
+        newMaxHp += 15; // Gain 15 Max HP per level
+        newMaxMp += 5;  // Gain 5 Max MP per level
+      }
+
       const next: Player = {
         ...p,
-        hp: clamp(p.hp + (action.hpDelta ?? 0), 0, p.maxHp),
-        mp: clamp(p.mp + (action.mpDelta ?? 0), 0, p.maxMp),
-        xp: Math.max(0, p.xp + (action.xpDelta ?? 0)),
+        hp: clamp(p.hp + (action.hpDelta ?? 0), 0, newMaxHp),
+        mp: clamp(p.mp + (action.mpDelta ?? 0), 0, newMaxMp),
+        xp: newXp,
+        level: newLevel,
+        maxHp: newMaxHp,
+        maxMp: newMaxMp,
       };
+      
       const dead = next.hp <= 0;
       return { ...state, player: next, gameState: dead ? "GAMEOVER" : state.gameState };
     }
@@ -102,6 +121,13 @@ function reducer(state: GameSnapshot, action: Action): GameSnapshot {
       return { ...state, currentLocation: action.value };
     case "ADD_QUEST":
       return { ...state, quests: [...state.quests, action.value] };
+    case "UPDATE_QUEST": // <-- NEW LOGIC
+      return {
+        ...state,
+        quests: state.quests.map((q) =>
+          q.id === action.id ? { ...q, status: action.status } : q
+        ),
+      };
     case "HYDRATE":
       return action.value;
     case "RESET":
@@ -120,6 +146,8 @@ interface GameContextValue {
   addItem: (i: Item) => void;
   removeItem: (id: string) => void;
   setLocation: (l: Location) => void;
+  addQuest: (q: Quest) => void;
+  updateQuest: (id: string, status: "active" | "completed") => void;
   reset: () => void;
 }
 
@@ -158,11 +186,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const addItem = useCallback((i: Item) => dispatch({ type: "ADD_ITEM", value: i }), []);
   const removeItem = useCallback((id: string) => dispatch({ type: "REMOVE_ITEM", id }), []);
   const setLocation = useCallback((l: Location) => dispatch({ type: "SET_LOCATION", value: l }), []);
+  const addQuest = useCallback((q: Quest) => dispatch({ type: "ADD_QUEST", value: q }), []);
+  const updateQuest = useCallback(
+    (id: string, status: "active" | "completed") => dispatch({ type: "UPDATE_QUEST", id, status }),
+    []
+  );
   const reset = useCallback(() => dispatch({ type: "RESET" }), []);
 
   const value = useMemo<GameContextValue>(
-    () => ({ state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, reset }),
-    [state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, reset]
+    () => ({ state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, reset }),
+    [state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, reset]
   );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

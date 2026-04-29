@@ -1,4 +1,4 @@
-import type { Player, LogMessage, Item, Location } from "@/types/game";
+import type { Player, LogMessage, Item, Location, Quest } from "@/types/game"; // Added Quest
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -20,10 +20,12 @@ You MUST respond with a valid JSON object matching this EXACT structure:
     "imageDescription": "1-sentence visual description for an AI image generator (e.g., 'A neon-lit server room with glowing cables')"
   },
   "inventoryChanges": {
-    "add": [
-      { "id": "unique-id", "name": "Item Name", "type": "consumable", "description": "What it does" }
-    ],
+    "add": [ { "id": "unique-id", "name": "Item Name", "type": "consumable", "description": "What it does" } ],
     "remove": ["id-of-item-to-remove"]
+  },
+  "questChanges": {
+    "add": [ { "id": "unique-quest-id", "title": "New Quest", "description": "What to do", "status": "active" } ],
+    "update": [ { "id": "existing-quest-id", "status": "completed" } ]
   }
 }
 
@@ -32,7 +34,8 @@ RULES:
 2. inventoryChanges: ONLY output this if the player picks up, drops, or consumes an item. If no changes, output null.
 3. Combat: You are the combat arbiter. If the player attacks or is attacked, calculate reasonable damage, update hpDelta, and narrate the blow. 
 4. Leveling: If the player gains XP and their total goes over 100, narrate them feeling a surge of power.
-5. hpDelta/mpDelta/xpDelta: Negative for loss, positive for gain.`;
+5. hpDelta/mpDelta/xpDelta: Negative for loss, positive for gain. 
+6. questChanges: ONLY output this if the player receives a new mission or completes a current objective.`;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -86,7 +89,8 @@ function parseAIResponse(raw: string): ActionResult {
       message: makeLogMessage("AI", parsed.narrative || "The Aether-Core is silent."),
       effects: parsed.effects,
       locationChange: parsed.locationChange,
-      inventoryChanges: parsed.inventoryChanges
+      inventoryChanges: parsed.inventoryChanges,
+      questChanges: parsed.questChanges
     };
   } catch (e) {
     console.error("Failed to parse AI JSON:", e, raw);
@@ -104,6 +108,7 @@ export interface ActionResult {
   effects?: { hpDelta?: number; mpDelta?: number; xpDelta?: number; };
   locationChange?: Location | null;
   inventoryChanges?: { add?: Item[]; remove?: string[] } | null;
+  questChanges?: { add?: Quest[]; update?: { id: string; status: "active" | "completed" }[] } | null; // <-- ADD THIS
 }
 
 export async function generateNPCResponse(): Promise<LogMessage> {
@@ -115,19 +120,23 @@ export async function processAction(
   input: string,
   player: Player,
   gameLog: LogMessage[],
-  inventory: Item[],       // <-- NEW PARAMETER
-  currentLocation: Location // <-- NEW PARAMETER
+  inventory: Item[],
+  currentLocation: Location,
+  quests: Quest[] // <-- NEW PARAMETER
 ): Promise<ActionResult> {
   
   const recentHistory = gameLog.slice(-5).map(log => `${log.sender}: ${log.text}`).join('\n');
-  const inventoryList = inventory.map(i => `${i.name} (${i.description})`).join(', ') || "Empty";
+  const inventoryList = inventory.map(i => `${i.name}`).join(', ') || "Empty";
+  // Format the quests so the AI can read them!
+  const questList = quests.map(q => `[${q.status.toUpperCase()}] ${q.title}: ${q.description} (ID: ${q.id})`).join('\n') || "None";
 
-  // Feed everything into the AI so it knows exactly what is happening
   const prompt = `CURRENT STATE:
 Player: ${player.name} (Level ${player.level} ${player.class})
 HP: ${player.hp}/${player.maxHp} | MP: ${player.mp}/${player.maxMp} | XP: ${player.xp}
 Current Location: ${currentLocation.name} - ${currentLocation.description}
 Inventory: ${inventoryList}
+Active Quests:
+${questList}
 
 Recent History:
 ${recentHistory}
