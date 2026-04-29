@@ -30,7 +30,7 @@ const QUICK_ACTIONS = [
 ] as const;
 
 export function GameView() {
-  const { state, addLog, applyEffects, setGameState, reset } = useGameStore();
+  const { state, addLog, applyEffects, setGameState, reset, setLocation, addItem, removeItem } = useGameStore();
   const { player, inventory, gameLog, currentLocation, quests } = state;
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -63,17 +63,46 @@ export function GameView() {
     const text = commandText.trim();
     if (!text || thinking || !player) return;
     setInput("");
+    
     addLog({
       id: `log-${Date.now()}-p`,
       sender: "PLAYER",
       text,
       timestamp: Date.now(),
     });
+    
     setThinking(true);
     try {
-      const result = await processAction(text, player, gameLog);
+      // 1. Pass the new state variables to the engine
+      const result = await processAction(text, player, gameLog, inventory, currentLocation);
+      
+      // 2. Add the narrative
       addLog(result.message);
+      
+      // 3. Apply basic stats (HP, MP, XP)
       if (result.effects) applyEffects(result.effects);
+      
+      // 4. Change Location (Triggers new image generation!)
+      if (result.locationChange?.name) {
+         setLocation(result.locationChange);
+      }
+      
+      // 5. Manage Inventory
+      if (result.inventoryChanges?.add) {
+         result.inventoryChanges.add.forEach(item => addItem(item));
+      }
+      if (result.inventoryChanges?.remove) {
+         result.inventoryChanges.remove.forEach(id => removeItem(id));
+      }
+      
+    } catch (error) {
+      console.error(error);
+      addLog({
+        id: `log-${Date.now()}-err`,
+        sender: "SYSTEM",
+        text: "[WARNING: Aether-Core connection severed. Please try again.]",
+        timestamp: Date.now(),
+      });
     } finally {
       setThinking(false);
     }
