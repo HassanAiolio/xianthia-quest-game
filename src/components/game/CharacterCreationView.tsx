@@ -98,10 +98,21 @@ export function CharacterCreationView() {
   const [portraitLoading, setPortraitLoading] = useState(false);
 
   useEffect(() => {
+    // Only attempt synthesis if we have a valid name and class
     if (!nameValid || !chosenClass) return;
+    
     setPortraitLoading(true);
-    setPortraitUrl(getPortraitUrl(name, chosenClass, appearance));
-  }, [name, chosenClass, appearance]);
+    
+    // getPortraitUrl is async and returns a Promise, so we must await it
+    getPortraitUrl(name, chosenClass, appearance)
+      .then((url) => {
+        setPortraitUrl(url);
+      })
+      .catch((err) => {
+        console.error("Portrait synthesis failed:", err);
+        setPortraitLoading(false);
+      });
+  }, [name, chosenClass, appearance, nameValid]); // Added nameValid to dependencies
 
   return (
     <div className="relative min-h-screen px-4 py-10 sm:px-8">
@@ -361,48 +372,46 @@ export function CharacterCreationView() {
             <div className="text-xs uppercase tracking-[0.3em] text-muted-foreground">
               AI Portrait
             </div>
+            
             <div className="relative mt-3 aspect-[3/4] overflow-hidden rounded-xl border border-glass-border bg-gradient-to-br from-[oklch(0.18_0.04_270)] to-[oklch(0.12_0.03_290)]">
-              <div className="absolute inset-0 scanlines opacity-40" />
-              <div className="relative mt-3 aspect-[3/4] overflow-hidden rounded-xl border border-glass-border bg-gradient-to-br from-[oklch(0.18_0.04_270)] to-[oklch(0.12_0.03_290)]">
-                <div className="absolute inset-0 scanlines opacity-40" />
-                {portraitUrl ? (
-                  <img
-                    src={portraitUrl}
-                    alt="AI Portrait"
-                    className="absolute inset-0 h-full w-full object-cover"
-                    onLoad={() => setPortraitLoading(false)}
-                    onError={() => setPortraitLoading(false)}
-                  />
-                ) : null}
-                {(!portraitUrl || portraitLoading) && (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-cyan/70" />
-                    <div className="px-4 text-xs text-muted-foreground">
-                      {nameValid && chosenClass
-                        ? "Synthesizing portrait…"
-                        : "Awaiting AI portrait synthesis…"}
-                    </div>
+              {/* Overlay Scanlines */}
+              <div className="absolute inset-0 scanlines opacity-40 z-10 pointer-events-none" />
+              
+              {/* Portrait Image */}
+              {portraitUrl && (
+                <img
+                  src={portraitUrl}
+                  alt="AI Portrait"
+                  className="absolute inset-0 h-full w-full object-cover"
+                  onLoad={() => setPortraitLoading(false)}
+                  onError={() => setPortraitLoading(false)}
+                />
+              )}
+
+              {/* Loading State */}
+              {(!portraitUrl || portraitLoading) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center bg-black/40 backdrop-blur-sm">
+                  <Loader2 className="h-8 w-8 animate-spin text-cyan/70" />
+                  <div className="px-4 text-xs text-muted-foreground">
+                    {nameValid && chosenClass
+                      ? "Synthesizing portrait…"
+                      : "Awaiting character data…"}
                   </div>
-                )}
-                <div className="absolute inset-x-0 top-0 h-px" style={{ background: "var(--gradient-cyan)" }} />
-                <div className="absolute inset-x-0 bottom-0 h-px" style={{ background: "var(--gradient-gold)" }} />
-              </div>
-              <div
-                className="absolute inset-x-0 top-0 h-px"
-                style={{ background: "var(--gradient-cyan)" }}
-              />
-              <div
-                className="absolute inset-x-0 bottom-0 h-px"
-                style={{ background: "var(--gradient-gold)" }}
-              />
+                </div>
+              )}
+
+              {/* Decorative Borders */}
+              <div className="absolute inset-x-0 top-0 h-px z-20" style={{ background: "var(--gradient-cyan)" }} />
+              <div className="absolute inset-x-0 bottom-0 h-px z-20" style={{ background: "var(--gradient-gold)" }} />
             </div>
+
             <div className="mt-3 space-y-1 text-xs text-muted-foreground">
               <div>
-                <span className="text-foreground">Name:</span>{" "}
+                <span className="text-foreground font-medium">Name:</span>{" "}
                 {name.trim() || "—"}
               </div>
               <div>
-                <span className="text-foreground">Class:</span>{" "}
+                <span className="text-foreground font-medium">Class:</span>{" "}
                 {chosenClass ?? "—"}
               </div>
             </div>
