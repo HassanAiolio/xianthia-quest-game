@@ -195,7 +195,8 @@ export function GameView() {
         <main className="order-1 flex flex-col gap-4 lg:order-2 lg:min-h-0">
           {/* Visualizer */}
           <div className="glass-strong relative shrink-0 overflow-hidden rounded-2xl">
-            <div className="aspect-[16/7] relative bg-gradient-to-br from-[oklch(0.18_0.05_280)] via-[oklch(0.14_0.04_260)] to-[oklch(0.12_0.06_320)]">
+            {/* <div className="aspect-[16/7] relative bg-gradient-to-br from-[oklch(0.18_0.05_280)] via-[oklch(0.14_0.04_260)] to-[oklch(0.12_0.06_320)]"> */}
+            <div className="aspect-[21/9] lg:aspect-[3/1] relative bg-gradient-to-br from-[oklch(0.18_0.05_280)] via-[oklch(0.14_0.04_260)] to-[oklch(0.12_0.06_320)]">  
               <div className="absolute inset-0 scanlines opacity-25" />
               {locationImage && (
                 <img
