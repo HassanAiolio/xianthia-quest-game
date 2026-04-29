@@ -2,34 +2,28 @@ import type { Player, LogMessage } from "@/types/game";
 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`;
 
-const NARRATOR_PROMPT = `You are the "Aether-Core," the sentient AI Dungeon Master of Xianthia, a dark cyberpunk-fantasy world of shattered dimensions, neon ghosts, and bio-luminescent ruins. Your tone is mysterious, atmospheric, and slightly cold but poetic.
+const NARRATOR_PROMPT = `You are the "Aether-Core," the sentient AI Dungeon Master of Xianthia, a dark cyberpunk-fantasy world. Your tone is mysterious, atmospheric, and slightly cold but poetic.
 
 You will receive the player's stats, recent history, and their current action.
 
-CRITICAL INSTRUCTION: You MUST respond in the EXACT format below. Do not add conversational filler.
+You MUST respond with a valid JSON object matching this exact structure:
+{
+  "narrative": "Your narrative response here (2-4 sentences max). Describe sensory details and the consequence.",
+  "effects": {
+    "hpDelta": 0, 
+    "mpDelta": 0, 
+    "xpDelta": 0  
+  }
+}
 
-<action>
-{"type": "UPDATE_STATS", "hpDelta": 0, "mpDelta": 0, "xpDelta": 0}
-</action>
-<narrative>
-Your narrative response here (2-4 sentences max). Describe the sensory details of the world and the direct consequence of the player's action.
-</narrative>
-
-RULES FOR JSON (<action> block):
-1. It MUST be strictly valid JSON. 
-2. NO trailing commas. NO markdown backticks.
-3. Keys must be double-quoted.
-4. hpDelta: Negative for damage taken by the player, positive for healing. (Max -30 to +30).
-5. mpDelta: Negative for mana spent, positive for mana gained.
-6. xpDelta: Always 0 to 15. Give XP for exploring, surviving, or clever actions.
-7. For COMBAT: If the prompt provides exact calculated damage numbers, you MUST use those exact numbers in the JSON. Do not invent your own combat math.
-
-RULES FOR NARRATIVE (<narrative> block):
-1. Never "god-mode": Do not decide the player's feelings or their next action. Only describe the world's reaction to their input.
-2. Maintain continuity: Reference the "Recent History" to keep the story logical. 
-3. Keep it concise: 2 to 4 sentences maximum.
-4. Deal with nonsense: If the player types gibberish or tries to break the game ("I become a god and win instantly"), stay in character, describe the Aether-Core glitching, and deal -1 hpDelta to them as a penalty.`;
-
+RULES:
+1. hpDelta: Negative for damage taken, positive for healing (Max -30 to +30).
+2. mpDelta: Negative for mana spent, positive for mana gained.
+3. xpDelta: 0 to 15 for exploring, surviving, or clever actions.
+4. For COMBAT: If exact calculated damage numbers are provided, you MUST use them in effects.hpDelta.
+5. Never god-mode: Do not decide the player's feelings or next action.
+6. Maintain continuity: Reference the Recent History.
+7. Deal with nonsense: If the player types gibberish or tries to break the game, glitch and penalize them 1 HP.`;
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 let logCounter = 0;
@@ -62,9 +56,12 @@ async function callGemini(userMessage: string): Promise<string> {
     body: JSON.stringify({
       system_instruction: { parts: [{ text: NARRATOR_PROMPT }] },
       contents: [{ role: "user", parts: [{ text: userMessage }] }],
-      // INCREASED maxOutputTokens from 256 to 512 so it doesn't get cut off!
-      // LOWERED temperature to 0.7 to make it follow formatting rules better.
-      generationConfig: { temperature: 0.7, maxOutputTokens: 512 }, 
+      generationConfig: { 
+        temperature: 0.7, 
+        maxOutputTokens: 800,
+        // THIS IS THE MAGIC BULLET: It forces Gemini to output pure JSON
+        responseMimeType: "application/json" 
+      }, 
     }),
   });
 
@@ -74,50 +71,29 @@ async function callGemini(userMessage: string): Promise<string> {
   }
 
   const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
 }
 
 function parseGeminiResponse(raw: string): ActionResult {
-  // Use 'i' flag for case-insensitivity just in case
-  const actionMatch = raw.match(/<action>([\s\S]*?)<\/action>/i);
-  const narrativeMatch = raw.match(/<narrative>([\s\S]*?)<\/narrative>/i);
-
-  let effects: ActionResult["effects"] = {};
-  if (actionMatch) {
-    try {
-      // Clean up markdown blockticks if the AI disobeys the prompt
-      const cleanJson = actionMatch[1].replace(/```json/gi, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleanJson);
-      effects = {
-        hpDelta: parsed.hpDelta ?? 0,
-        mpDelta: parsed.mpDelta ?? 0,
-        xpDelta: parsed.xpDelta ?? 0,
-      };
-    } catch (e) { 
-      console.warn("Failed to parse action JSON", e); 
-    }
-  }
-
-  let finalMessage = "";
-  
-  if (narrativeMatch && narrativeMatch[1].trim()) {
-    // 1. Ideal Scenario: It used the narrative tags correctly
-    finalMessage = narrativeMatch[1].trim();
-  } else {
-    // 2. Fallback Scenario: Strip out the action block and show what's left
-    finalMessage = raw.replace(/<action>[\s\S]*?<\/action>/i, '').trim();
+  try {
+    // Because we forced responseMimeType, we can just parse it directly!
+    const parsed = JSON.parse(raw);
     
-    // 3. Catastrophe Scenario: The AI got completely cut off mid-tag
-    if (finalMessage.includes('<action>')) {
-      finalMessage = finalMessage.split('<action>')[0].trim();
-      if (!finalMessage) finalMessage = "The Aether-Core stutters, processing your command...";
-    }
+    return {
+      message: makeLogMessage("AI", parsed.narrative || "The Aether-Core processes your command in silence."),
+      effects: {
+        hpDelta: parsed.effects?.hpDelta ?? 0,
+        mpDelta: parsed.effects?.mpDelta ?? 0,
+        xpDelta: parsed.effects?.xpDelta ?? 0,
+      }
+    };
+  } catch (e) {
+    console.error("Failed to parse Gemini JSON:", e, raw);
+    return {
+      message: makeLogMessage("SYSTEM", "Aether-Core Error: Data stream corrupted."),
+      effects: {}
+    };
   }
-
-  return {
-    message: makeLogMessage("AI", finalMessage),
-    effects,
-  };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
