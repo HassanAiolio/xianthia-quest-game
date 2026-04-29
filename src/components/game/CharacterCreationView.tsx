@@ -98,21 +98,28 @@ export function CharacterCreationView() {
   const [portraitLoading, setPortraitLoading] = useState(false);
 
   useEffect(() => {
-    // Only attempt synthesis if we have a valid name and class
     if (!nameValid || !chosenClass) return;
-    
+
+    // 1. Immediately show the loading spinner when they type
     setPortraitLoading(true);
+
+    // 2. Set a timer to wait 1000ms (1 second)
+    const debounceTimer = setTimeout(() => {
+      getPortraitUrl(name, chosenClass, appearance)
+        .then((url) => {
+          setPortraitUrl(url);
+        })
+        .catch((err) => {
+          console.error("Portrait synthesis failed:", err);
+          setPortraitLoading(false);
+        });
+    }, 1000);
+
+    // 3. CLEANUP: If they type another letter before the 1 second is up, 
+    // this cancels the previous timer so we don't generate the half-finished word.
+    return () => clearTimeout(debounceTimer);
     
-    // getPortraitUrl is async and returns a Promise, so we must await it
-    getPortraitUrl(name, chosenClass, appearance)
-      .then((url) => {
-        setPortraitUrl(url);
-      })
-      .catch((err) => {
-        console.error("Portrait synthesis failed:", err);
-        setPortraitLoading(false);
-      });
-  }, [name, chosenClass, appearance, nameValid]); // Added nameValid to dependencies
+  }, [name, chosenClass, appearance, nameValid]);
 
   return (
     <div className="relative min-h-screen px-4 py-10 sm:px-8">

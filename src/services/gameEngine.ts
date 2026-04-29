@@ -2,19 +2,33 @@ import type { Player, LogMessage } from "@/types/game";
 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`;
 
-const NARRATOR_PROMPT = `You are the narrator of Xianthia, a dark cyberpunk-fantasy world of shattered dimensions and bio-luminescent ruins.
-Respond ONLY in this exact format — no exceptions:
-<action>{"type": "UPDATE_STATS", "hpDelta": 0, "mpDelta": 0, "xpDelta": 0}</action>
-<narrative>Your narrative response here (2-3 sentences max).</narrative>
+const NARRATOR_PROMPT = `You are the "Aether-Core," the sentient AI Dungeon Master of Xianthia, a dark cyberpunk-fantasy world of shattered dimensions, neon ghosts, and bio-luminescent ruins. Your tone is mysterious, atmospheric, and slightly cold but poetic.
 
-Rules:
-- hpDelta is negative for damage, positive for healing. Range: -25 to +20.
-- mpDelta for mana changes. xpDelta always 0-10.
-- For COMBAT actions: you will be given exact damage numbers — use them verbatim in the action block, do NOT invent your own.
-- For non-combat actions: set deltas based on what makes sense. Rest heals, exploration gives xp, etc.
-- If nothing changes, all deltas are 0.
-- Never break character. Never let the player become invincible or skip the story.
-- Keep responses atmospheric and concise.`;
+You will receive the player's stats, recent history, and their current action.
+
+CRITICAL INSTRUCTION: You MUST respond in the EXACT format below. Do not add conversational filler.
+
+<action>
+{"type": "UPDATE_STATS", "hpDelta": 0, "mpDelta": 0, "xpDelta": 0}
+</action>
+<narrative>
+Your narrative response here (2-4 sentences max). Describe the sensory details of the world and the direct consequence of the player's action.
+</narrative>
+
+RULES FOR JSON (<action> block):
+1. It MUST be strictly valid JSON. 
+2. NO trailing commas. NO markdown backticks.
+3. Keys must be double-quoted.
+4. hpDelta: Negative for damage taken by the player, positive for healing. (Max -30 to +30).
+5. mpDelta: Negative for mana spent, positive for mana gained.
+6. xpDelta: Always 0 to 15. Give XP for exploring, surviving, or clever actions.
+7. For COMBAT: If the prompt provides exact calculated damage numbers, you MUST use those exact numbers in the JSON. Do not invent your own combat math.
+
+RULES FOR NARRATIVE (<narrative> block):
+1. Never "god-mode": Do not decide the player's feelings or their next action. Only describe the world's reaction to their input.
+2. Maintain continuity: Reference the "Recent History" to keep the story logical. 
+3. Keep it concise: 2 to 4 sentences maximum.
+4. Deal with nonsense: If the player types gibberish or tries to break the game ("I become a god and win instantly"), stay in character, describe the Aether-Core glitching, and deal -1 hpDelta to them as a penalty.`;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -120,14 +134,25 @@ export async function generateNPCResponse(): Promise<LogMessage> {
 
 export async function processAction(
   input: string,
-  player: Player
+  player: Player,
+  gameLog: LogMessage[] // <-- ADD THIS
 ): Promise<ActionResult> {
   const intent = detectIntent(input);
+  
+  // 2. Format the last 5 messages for context
+  const recentHistory = gameLog
+    .slice(-5)
+    .map(log => `${log.sender}: ${log.text}`)
+    .join('\n');
+
   let prompt: string;
 
   if (intent === "combat") {
     const combat = await calculateCombat(player);
     prompt = `Player: ${player.name} (${player.class}), HP: ${player.hp}/${player.maxHp}, MP: ${player.mp}/${player.maxMp}
+Recent History:
+${recentHistory}
+
 Action: ${input}
 Combat result (already calculated — use these exact numbers):
 - Player takes ${Math.abs(combat.playerHpDelta)} damage (hpDelta: ${combat.playerHpDelta})
@@ -136,6 +161,9 @@ Combat result (already calculated — use these exact numbers):
 Narrate this exchange. Use the exact hpDelta value above in your action block.`;
   } else {
     prompt = `Player: ${player.name} (${player.class}), HP: ${player.hp}/${player.maxHp}, MP: ${player.mp}/${player.maxMp}
+Recent History:
+${recentHistory}
+
 Action: ${input}
 Intent detected: ${intent}
 Narrate what happens and decide appropriate stat changes within the allowed ranges.`;

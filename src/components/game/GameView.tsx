@@ -71,7 +71,7 @@ export function GameView() {
     });
     setThinking(true);
     try {
-      const result = await processAction(text, player);
+      const result = await processAction(text, player, gameLog);
       addLog(result.message);
       if (result.effects) applyEffects(result.effects);
     } finally {
