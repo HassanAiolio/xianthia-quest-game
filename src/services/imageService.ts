@@ -1,15 +1,10 @@
-const BASE_URL = "https://image.pollinations.ai/prompt";
+// src/services/imageService.ts
 
-function buildUrl(prompt: string, width: number, height: number): string {
-  const encoded = encodeURIComponent(prompt);
-  return `${BASE_URL}/${encoded}?model=flux&width=${width}&height=${height}&seed=${Math.floor(Math.random() * 999999)}&referrer=pollinations.ai`;
-}
-
-export function getPortraitUrl(
+export async function getPortraitUrl(
   name: string,
   characterClass: string,
   appearance: string
-): string {
+): Promise<string> {
   const classPrompts: Record<string, string> = {
     "Chrono-Mage": "robed mage glowing hourglass staff time magic purple energy",
     "Neural-Stalker": "cyberpunk infiltrator wetware implants stealth dark hood neon",
@@ -18,13 +13,21 @@ export function getPortraitUrl(
 
   const classDetail = classPrompts[characterClass] ?? characterClass;
   const appearanceDetail = appearance.trim() ? `, ${appearance.trim()}` : "";
-
   const prompt = `pixel art 16bit portrait bust shot, ${name}, ${classDetail}${appearanceDetail}, dark cyberpunk fantasy background, dramatic lighting, detailed face, RPG character art style`;
 
-  return buildUrl(prompt, 512, 512);
+  // Pollinations.ai creates images directly from the URL. No API keys or fetch needed!
+  const encodedPrompt = encodeURIComponent(prompt);
+  // Using a random seed so characters with the same name look different
+  const seed = Math.floor(Math.random() * 100000); 
+  
+  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&nologo=true&seed=${seed}`;
 }
 
-export function getLocationImageUrl(imageDescription: string): string {
+export async function getLocationImageUrl(imageDescription: string): Promise<string> {
   const prompt = `pixel art 16bit wide landscape, ${imageDescription}, dark cyberpunk fantasy world, atmospheric, dramatic lighting, detailed environment, RPG background art style`;
-  return buildUrl(prompt, 896, 448);
+  
+  const encodedPrompt = encodeURIComponent(prompt);
+  const seed = Math.floor(Math.random() * 100000);
+
+  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=896&height=448&nologo=true&seed=${seed}`;
 }
