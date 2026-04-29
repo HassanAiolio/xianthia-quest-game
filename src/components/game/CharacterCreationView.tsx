@@ -77,6 +77,7 @@ export function CharacterCreationView() {
       maxMp,
       xp: 0,
       level: 1,
+      portraitUrl: portraitUrl || undefined,
     });
     addLog(
       makeLogMessage(

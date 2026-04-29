@@ -96,12 +96,23 @@ export function GameView() {
         <aside className="glass-strong order-2 flex flex-col gap-4 rounded-2xl p-4 lg:order-1">
           {/* Portrait */}
           <div className="relative aspect-square overflow-hidden rounded-xl border border-glass-border bg-gradient-to-br from-[oklch(0.2_0.05_270)] to-[oklch(0.12_0.03_290)]">
-            <div className="absolute inset-0 scanlines opacity-30" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <User className="h-16 w-16 text-cyan/60" />
-            </div>
+            <div className="absolute inset-0 scanlines opacity-30 z-10 pointer-events-none" />
+            
+            {/* Show AI Image if it exists, otherwise fallback to Icon */}
+            {player.portraitUrl ? (
+              <img 
+                src={player.portraitUrl} 
+                alt={player.name} 
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <User className="h-16 w-16 text-cyan/60" />
+              </div>
+            )}
+            
             <div
-              className="absolute inset-x-0 top-0 h-px"
+              className="absolute inset-x-0 top-0 h-px z-20"
               style={{ background: "var(--gradient-cyan)" }}
             />
           </div>

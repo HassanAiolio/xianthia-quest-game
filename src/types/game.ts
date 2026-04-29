@@ -19,6 +19,7 @@ export interface Player {
   maxMp: number;
   xp: number;
   level: number;
+  portraitUrl?: string;
 }
 
 export type ItemType = "weapon" | "armor" | "consumable" | "artifact" | "key";
