@@ -57,7 +57,7 @@ async function callGroq(userMessage: string): Promise<string> {
       "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
     },
     body: JSON.stringify({
-      model: "llama3-8b-8192", // Ultra-fast model
+      model: "llama-3.3-70b-versatile", 
       messages: [
         { role: "system", content: NARRATOR_PROMPT },
         { role: "user", content: userMessage }
