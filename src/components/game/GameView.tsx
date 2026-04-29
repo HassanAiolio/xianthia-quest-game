@@ -35,6 +35,14 @@ export function GameView() {
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const [locationImage, setLocationImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLocationImage(null);
+    getLocationImageUrl(currentLocation.imageDescription)
+      .then(setLocationImage)
+      .catch(() => setLocationImage(null));
+  }, [currentLocation.imageDescription]);
 
   useEffect(() => {
     if (!logRef.current) return;
@@ -151,12 +159,13 @@ export function GameView() {
           <div className="glass-strong relative overflow-hidden rounded-2xl">
             <div className="aspect-[16/7] relative bg-gradient-to-br from-[oklch(0.18_0.05_280)] via-[oklch(0.14_0.04_260)] to-[oklch(0.12_0.06_320)]">
               <div className="absolute inset-0 scanlines opacity-25" />
-              <img
-                key={currentLocation.imageDescription}
-                src={getLocationImageUrl(currentLocation.imageDescription)}
-                alt={currentLocation.name}
-                className="absolute inset-0 h-full w-full object-cover opacity-80"
-              />
+              {locationImage && (
+                <img
+                  src={locationImage}
+                  alt={currentLocation.name}
+                  className="absolute inset-0 h-full w-full object-cover opacity-80"
+                />
+              )}
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                 <div className="text-[10px] uppercase tracking-[0.3em] text-cyan">Current Location</div>
