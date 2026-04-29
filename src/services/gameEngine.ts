@@ -1,7 +1,7 @@
 import type { Player, LogMessage } from "@/types/game";
 
-// const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`;
+
 const NARRATOR_PROMPT = `You are the "Aether-Core," the sentient AI Dungeon Master of Xianthia, a dark cyberpunk-fantasy world of shattered dimensions, neon ghosts, and bio-luminescent ruins. Your tone is mysterious, atmospheric, and slightly cold but poetic.
 
 You will receive the player's stats, recent history, and their current action.
