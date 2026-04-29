@@ -168,6 +168,14 @@ Intent detected: ${intent}
 Narrate what happens and decide appropriate stat changes within the allowed ranges.`;
   }
 
+  // 1. Call the AI
   const raw = await callGemini(prompt);
+  
+  // 2. PRINT THE PURE RAW OUTPUT TO THE BROWSER CONSOLE
+  console.log("====== PURE AI RESPONSE ======");
+  console.log(raw);
+  console.log("==============================");
+
+  // 3. Parse it
   return parseGeminiResponse(raw);
 }
