@@ -37,16 +37,17 @@ export function GameView() {
   const logRef = useRef<HTMLDivElement>(null);
   const [enemyImage, setEnemyImage] = useState<string | null>(null);
   const [locationImage, setLocationImage] = useState<string | null>(null);
+  const isLowHealth = player && player.hp <= player.maxHp * 0.3;
 
   useEffect(() => {
     if (currentEnemy) {
-      getEnemyImageUrl(currentEnemy.imageDescription)
+      getEnemyImageUrl(currentEnemy.imageDescription, currentEnemy.id)
         .then(setEnemyImage)
         .catch(() => setEnemyImage(null));
     } else {
       setEnemyImage(null);
     }
-  }, [currentEnemy?.imageDescription]);
+  }, [currentEnemy?.imageDescription, currentEnemy?.id]); // <-- Add id to the dependency array
 
   useEffect(() => {
     if (!logRef.current) return;
@@ -127,6 +128,17 @@ export function GameView() {
         className="pointer-events-none absolute inset-0"
         style={{ background: "var(--gradient-aurora)" }}
       />
+
+      <AnimatePresence>
+        {isLowHealth && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="pointer-events-none absolute inset-0 z-50 border-[6px] border-destructive/60 bg-[color-mix(in_oklch,var(--destructive)_5%,transparent)] animate-pulse"
+          />
+        )}
+      </AnimatePresence>
 
       {/* 2. Added flex-1 and lg:min-h-0 to let the grid fill remaining height */}
       <div className="relative mx-auto flex w-full max-w-[1500px] flex-1 flex-col gap-4 lg:grid lg:min-h-0 lg:grid-cols-[280px_1fr_320px]">

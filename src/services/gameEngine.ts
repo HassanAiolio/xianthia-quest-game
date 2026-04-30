@@ -137,36 +137,82 @@ async function generateEncounter(player: Player, location: Location, recentHisto
   return JSON.parse(raw) as Enemy;
 }
 
-// HELPER 2: Pure TypeScript math for the combat turn
-export function calculateCombatTurn(player: Player, enemy: Enemy) {
-  // Player rolls 1d6 + their Strength stat
-  const playerRoll = Math.floor(Math.random() * 6) + 1; 
-  const playerDamage = player.stats.str + playerRoll;
+// HELPER 2: D&D Style Math + Signature Abilities!
+export function calculateCombatTurn(player: Player, enemy: Enemy, action: string) {
+  const actionLower = action.toLowerCase();
+  const isDefending = actionLower.match(/defend|block|dodge|hide|cover/);
+
+  // Check if they typed their ability name
+  const usesTemporal = player.class === "Chrono-Mage" && actionLower.includes("temporal cascade");
+  const usesSpectral = player.class === "Neural-Stalker" && actionLower.includes("spectral hack");
+  const usesVoidstrike = player.class === "Rift-Knight" && actionLower.includes("voidstrike");
   
+  const isAbility = usesTemporal || usesSpectral || usesVoidstrike;
+  const abilitySuccess = isAbility && player.mp >= 10;
+  const abilityMpCost = abilitySuccess ? 10 : 0; // Costs 10 MP!
+
+  // --- PLAYER'S TURN ---
+  let playerHits = false;
+  let playerDamage = 0;
+
+  if (!isDefending) {
+    if (abilitySuccess) {
+      // Signature Abilities are guaranteed hits and deal big damage based on primary stat!
+      playerHits = true;
+      if (usesTemporal) playerDamage = Math.floor(Math.random() * 6) + Math.floor(Math.random() * 6) + 2 + player.stats.int; // 2d6 + 2 + INT
+      if (usesSpectral) playerDamage = Math.floor(Math.random() * 8) + 4 + player.stats.dex; // 1d8 + 4 + DEX
+      if (usesVoidstrike) playerDamage = Math.floor(Math.random() * 12) + 2 + player.stats.str; // 1d12 + 2 + STR
+    } else {
+      // Regular Attack: 1d20 + highest stat to hit a base AC of 12
+      const highestStat = Math.max(player.stats.str, player.stats.dex, player.stats.int);
+      const playerHitRoll = Math.floor(Math.random() * 20) + 1;
+      playerHits = (playerHitRoll + highestStat) >= 12;
+
+      if (playerHits) {
+        playerDamage = Math.floor(Math.random() * 6) + 1 + highestStat; // 1d6 + Stat
+      }
+    }
+  }
+
   const newEnemyHp = Math.max(0, enemy.hp - playerDamage);
   const enemyDied = newEnemyHp === 0;
 
-  // Enemy hits back if it survives
+  // --- ENEMY'S TURN ---
+  let enemyHits = false;
   let enemyDamage = 0;
+
   if (!enemyDied) {
-    enemyDamage = Math.floor(Math.random() * (enemy.maxDamage - enemy.minDamage + 1)) + enemy.minDamage;
+    // Player AC = 10 + Dexterity (Defending grants +5 AC)
+    const playerAC = 10 + player.stats.dex + (isDefending ? 5 : 0);
+    const enemyHitRoll = Math.floor(Math.random() * 20) + 1;
+    
+    enemyHits = (enemyHitRoll + 4) >= playerAC;
+
+    if (enemyHits) {
+      enemyDamage = Math.floor(Math.random() * (enemy.maxDamage - enemy.minDamage + 1)) + enemy.minDamage;
+    }
   }
-  
-  return { playerDamage, enemyDamage, newEnemyHp, enemyDied };
+
+  return { playerHits, playerDamage, enemyHits, enemyDamage, newEnemyHp, enemyDied, isDefending, abilitySuccess, abilityMpCost };
 }
 
-// HELPER 3: Asks the AI to narrate the math we just calculated
+// HELPER 3: Tell the AI what happened
 async function narrateCombatTurn(player: Player, enemy: Enemy, action: string, math: any): Promise<string> {
   const systemPrompt = `You are a dark cyberpunk AI DM. Respond ONLY in valid JSON.`;
-  const userPrompt = `The player used the action: "${action}". 
-  FACTS: The player hit ${enemy.name} for ${math.playerDamage} damage. ${enemy.name} hit the player back for ${math.enemyDamage} damage. Is the enemy dead? ${math.enemyDied}.
   
-  Write a 2-sentence visceral, dark cyberpunk combat narrative. Do NOT invent new damage numbers.
-  Respond ONLY in JSON format: { "narrative": "text here" }`;
+  const userPrompt = `The player used the action: "${action}". 
+  COMBAT RESULTS:
+  - Player Turn: Defending? ${!!math.isDefending}. Used Signature Ability? ${!!math.abilitySuccess}. Did they hit? ${math.playerHits}. Damage: ${math.playerDamage}.
+  - Enemy Turn: Did they hit the player? ${math.enemyHits}. Damage: ${math.enemyDamage}.
+  - Is the enemy dead? ${math.enemyDied}.
+  
+  Write a 3-sentence visceral narrative. Describe misses if someone missed! If they used their signature ability, make it sound incredibly epic. 
+  Do NOT invent new damage numbers. Respond ONLY in JSON format: { "narrative": "text here" }`;
   
   const raw = await callGroq(userPrompt, systemPrompt);
   return JSON.parse(raw).narrative;
 }
+
 
 export async function processAction(
   input: string,
@@ -183,7 +229,7 @@ export async function processAction(
   // === ROUTE A: WE ARE IN COMBAT ===
   if (gameState === "COMBAT" && currentEnemy) {
     // 1. Do the Math
-    const math = calculateCombatTurn(player, currentEnemy);
+    const math = calculateCombatTurn(player, currentEnemy, input); // <-- Pass input
     
     // 2. Get the AI to narrate it
     const narrative = await narrateCombatTurn(player, currentEnemy, input, math);
@@ -192,6 +238,7 @@ export async function processAction(
       message: makeLogMessage("AI", narrative),
       effects: { 
         hpDelta: -math.enemyDamage, 
+        mpDelta: -math.abilityMpCost,
         xpDelta: math.enemyDied ? 25 : 0 // Give 25 XP for a kill!
       },
       enemyChange: math.enemyDied ? "clear" : { ...currentEnemy, hp: math.newEnemyHp },
