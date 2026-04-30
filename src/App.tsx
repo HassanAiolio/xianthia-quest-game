@@ -17,7 +17,7 @@ function Router() {
       >
         {state.gameState === "LANDING" && <LandingView />}
         {state.gameState === "CHARACTER_CREATION" && <CharacterCreationView />}
-        {(state.gameState === "PLAYING" || state.gameState === "GAMEOVER") && <GameView />}
+        {(state.gameState === "PLAYING" || state.gameState === "GAMEOVER" || state.gameState === "COMBAT") && <GameView />}
       </motion.div>
     </AnimatePresence>
   );
