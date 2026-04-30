@@ -20,6 +20,7 @@ export interface Player {
   xp: number;
   level: number;
   portraitUrl?: string;
+  statPoints: number;
 }
 
 export interface Enemy {

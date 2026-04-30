@@ -12,7 +12,8 @@ import {
   Skull,
   Sword,
   User,
-  Sparkles
+  Sparkles,
+  Plus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +33,7 @@ const QUICK_ACTIONS = [
 ] as const;
 
 export function GameView() {
-  const { state, addLog, applyEffects, setGameState, reset, setLocation, addItem, removeItem, addQuest, updateQuest, setEnemy } = useGameStore(); // <-- Added setEnemy
+  const { state, addLog, applyEffects, setGameState, reset, setLocation, addItem, removeItem, addQuest, updateQuest, setEnemy, spendStatPoint } = useGameStore();
   const { player, inventory, gameLog, currentLocation, quests, currentEnemy } = state; 
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
@@ -194,7 +195,7 @@ export function GameView() {
             {(["str", "int", "dex", "lck"] as const).map((s) => (
               <div
                 key={s}
-                className="rounded-lg border border-border bg-black/20 py-2"
+                className="relative flex flex-col items-center justify-center rounded-lg border border-border bg-black/20 py-2"
               >
                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   {s}
@@ -202,9 +203,27 @@ export function GameView() {
                 <div className="font-display text-lg text-foreground">
                   {player.stats[s]}
                 </div>
+                
+                {/* RENDER PLUS BUTTON IF THEY HAVE POINTS */}
+                {player.statPoints > 0 && (
+                  <button
+                    onClick={() => spendStatPoint(s)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[var(--gold)] to-amber-600 text-[var(--gold-foreground)] hover:scale-110 transition-transform shadow-[0_0_8px_var(--gold)]"
+                    title={`Increase ${s.toUpperCase()}`}
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
+
+          {/* RENDER UNSPENT POINTS WARNING */}
+          {player.statPoints > 0 && (
+            <div className="mt-1 text-center text-[10px] text-[var(--gold)] animate-pulse uppercase tracking-wider font-bold">
+              Unspent Stat Points: {player.statPoints}
+            </div>
+          )}
 
           {/* Signature Ability Panel */}
           {playerClassDef && (

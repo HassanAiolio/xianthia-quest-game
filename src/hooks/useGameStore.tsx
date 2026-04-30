@@ -16,6 +16,8 @@ import type {
   Player,
   Quest,
   Enemy,
+  Stats,
+  CharacterClass
 } from "@/types/game";
 
 const STORAGE_KEY = "xianthia-quest:v1";
@@ -70,6 +72,7 @@ type Action =
   | { type: "ADD_QUEST"; value: Quest }
   | { type: "UPDATE_QUEST"; id: string; status: "active" | "completed" } 
   | { type: "SET_ENEMY"; value: Enemy | null }
+  | { type: "SPEND_STAT_POINT"; stat: keyof Stats }
   | { type: "RESET" }
   | { type: "HYDRATE"; value: GameSnapshot };
 
@@ -94,13 +97,27 @@ function reducer(state: GameSnapshot, action: Action): GameSnapshot {
       let newLevel = p.level;
       let newMaxHp = p.maxHp;
       let newMaxMp = p.maxMp;
+      let newStatPoints = p.statPoints || 0;
 
-      // LEVEL UP LOGIC! Loop in case they gain massive XP at once
+      // Define class-specific growth rates
+      const growthRates: Record<CharacterClass, { hp: number; mp: number }> = {
+        "Chrono-Mage": { hp: 8, mp: 15 },
+        "Neural-Stalker": { hp: 12, mp: 10 },
+        "Rift-Knight": { hp: 18, mp: 5 },
+      };
+      const growth = growthRates[p.class] || { hp: 12, mp: 8 };
+
+      // LEVEL UP LOGIC
       while (newXp >= 100) {
         newLevel += 1;
         newXp -= 100;
-        newMaxHp += 15; // Gain 15 Max HP per level
-        newMaxMp += 5;  // Gain 5 Max MP per level
+        newMaxHp += growth.hp; // Scale HP by class
+        newMaxMp += growth.mp; // Scale MP by class
+        
+        // Every 5th level, award 2 stat points!
+        if (newLevel % 5 === 0) {
+          newStatPoints += 2;
+        }
       }
 
       const next: Player = {
@@ -111,11 +128,28 @@ function reducer(state: GameSnapshot, action: Action): GameSnapshot {
         level: newLevel,
         maxHp: newMaxHp,
         maxMp: newMaxMp,
+        statPoints: newStatPoints, // Save the unspent points
       };
       
       const dead = next.hp <= 0;
       return { ...state, player: next, gameState: dead ? "GAMEOVER" : state.gameState };
     }
+
+    case "SPEND_STAT_POINT": {
+      if (!state.player || state.player.statPoints <= 0) return state;
+      return {
+        ...state,
+        player: {
+          ...state.player,
+          statPoints: state.player.statPoints - 1,
+          stats: {
+            ...state.player.stats,
+            [action.stat]: state.player.stats[action.stat] + 1
+          }
+        }
+      };
+    }
+
     case "ADD_ITEM":
       return { ...state, inventory: [...state.inventory, action.value] };
     case "REMOVE_ITEM":
@@ -154,6 +188,7 @@ interface GameContextValue {
   addQuest: (q: Quest) => void;
   updateQuest: (id: string, status: "active" | "completed") => void;
   setEnemy: (e: Enemy | null) => void;
+  spendStatPoint: (stat: keyof Stats) => void;
   reset: () => void;
 }
 
@@ -198,11 +233,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     []
   );
   const setEnemy = useCallback((e: Enemy | null) => dispatch({ type: "SET_ENEMY", value: e }), []);
+  const spendStatPoint = useCallback((stat: keyof Stats) => dispatch({ type: "SPEND_STAT_POINT", stat }), []); // <-- ADD THIS
   const reset = useCallback(() => dispatch({ type: "RESET" }), []);
 
   const value = useMemo<GameContextValue>(
-    () => ({ state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, setEnemy, reset }),
-    [state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, setEnemy, reset]
+    () => ({ state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, setEnemy, spendStatPoint, reset }),
+    [state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, setEnemy, spendStatPoint, reset]
   );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

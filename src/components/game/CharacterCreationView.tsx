@@ -78,6 +78,7 @@ export function CharacterCreationView() {
       xp: 0,
       level: 1,
       portraitUrl: portraitUrl || undefined,
+      statPoints: 0,
     });
     addLog(
       makeLogMessage(
