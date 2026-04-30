@@ -12,6 +12,7 @@ import {
   Skull,
   Sword,
   User,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useGameStore } from "@/hooks/useGameStore";
 import { processAction } from "@/services/gameEngine";
 import { VitalBar } from "@/components/game/VitalBar";
+import { CLASS_DEFS } from "@/types/game";
 import { cn } from "@/lib/utils";
 
 const QUICK_ACTIONS = [
@@ -37,6 +39,9 @@ export function GameView() {
   const logRef = useRef<HTMLDivElement>(null);
   const [enemyImage, setEnemyImage] = useState<string | null>(null);
   const [locationImage, setLocationImage] = useState<string | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const selectedItem = inventory.find(i => i.id === selectedItemId);
+  const playerClassDef = player ? CLASS_DEFS.find(c => c.id === player.class) : null;
   const isLowHealth = player && player.hp <= player.maxHp * 0.3;
 
   useEffect(() => {
@@ -200,6 +205,21 @@ export function GameView() {
               </div>
             ))}
           </div>
+
+          {/* Signature Ability Panel */}
+          {playerClassDef && (
+            <div className="rounded-lg border border-cyan/20 bg-black/20 p-3">
+              <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-cyan">
+                <Sparkles className="h-3 w-3" /> Signature Ability
+              </div>
+              <div className="mt-1 font-display text-sm text-foreground">
+                {playerClassDef.signature} <span className="text-muted-foreground text-[10px]">(10 MP)</span>
+              </div>
+              <div className="mt-1 text-[11px] leading-tight text-muted-foreground">
+                {playerClassDef.description} Type <span className="text-cyan">"use {playerClassDef.signature.toLowerCase()}"</span> to unleash a guaranteed devastating strike.
+              </div>
+            </div>
+          )}
 
           <Button
             variant="ghost"
@@ -391,29 +411,67 @@ export function GameView() {
               </TabsTrigger>
             </TabsList>
             
-            <TabsContent value="inventory" className="mt-3 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden">
-              <div className="grid grid-cols-3 gap-2">
-                {inventory.map((item) => (
-                  <div
-                    key={item.id}
-                    title={`${item.name} - ${item.description}`}
-                    className="group relative aspect-square rounded-lg border border-glass-border bg-black/30 p-2 transition-colors hover:border-[var(--gold)]/60 hover:bg-[color-mix(in_oklch,var(--gold)_8%,transparent)]"
-                  >
-                    <div className="flex h-full flex-col items-center justify-center text-center">
-                      <Package className="h-5 w-5 text-cyan/70 group-hover:text-[var(--gold)]" />
-                      <div className="mt-1 line-clamp-2 text-[10px] leading-tight text-muted-foreground group-hover:text-foreground">
-                        {item.name}
+            <TabsContent value="inventory" className="mt-3 flex-1 flex flex-col min-h-0">
+              {/* Item Grid */}
+              <ScrollArea className="flex-1 pr-3">
+                <div className="grid grid-cols-3 gap-2 pb-2">
+                  {inventory.map((item) => {
+                    const isSelected = item.id === selectedItemId;
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => setSelectedItemId(item.id)}
+                        className={cn(
+                          "group relative aspect-square rounded-lg border bg-black/30 p-2 transition-colors text-left",
+                          isSelected 
+                            ? "border-[var(--gold)] bg-[color-mix(in_oklch,var(--gold)_15%,transparent)] shadow-[0_0_12px_color-mix(in_oklch,var(--gold)_20%,transparent)]" 
+                            : "border-glass-border hover:border-[var(--gold)]/60 hover:bg-[color-mix(in_oklch,var(--gold)_8%,transparent)]"
+                        )}
+                      >
+                        <div className="flex h-full flex-col items-center justify-center text-center">
+                          <Package className={cn("h-5 w-5 transition-colors", isSelected ? "text-[var(--gold)]" : "text-cyan/70 group-hover:text-[var(--gold)]")} />
+                          <div className={cn("mt-1 line-clamp-2 text-[10px] leading-tight transition-colors", isSelected ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")}>
+                            {item.name}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                  
+                  {/* Empty Slots */}
+                  {Array.from({ length: Math.max(0, 9 - inventory.length) }).map((_, i) => (
+                    <div key={i} className="aspect-square rounded-lg border border-dashed border-border/40 bg-black/10" />
+                  ))}
+                </div>
+              </ScrollArea>
+              
+              {/* Item Inspection Panel */}
+              <div className="shrink-0 mt-2 rounded-lg border border-glass-border bg-black/40 p-3 h-[120px] overflow-y-auto [&::-webkit-scrollbar]:hidden">
+                {selectedItem ? (
+                  <div className="animate-fade-up">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="font-display text-sm text-[var(--gold)] leading-tight">{selectedItem.name}</div>
+                      <div className="text-[9px] uppercase tracking-wider text-muted-foreground border border-border/50 rounded px-1.5 py-0.5 bg-black/20 shrink-0">
+                        {selectedItem.type}
                       </div>
                     </div>
+                    <p className="text-xs text-foreground mt-2 leading-relaxed">{selectedItem.description}</p>
+                    
+                    {/* Render Stat Bonuses if the item has them */}
+                    {selectedItem.statBonus && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {Object.entries(selectedItem.statBonus).map(([stat, val]) => (
+                          <span key={stat} className="text-[10px] font-bold text-cyan bg-cyan/10 border border-cyan/20 px-1.5 py-0.5 rounded uppercase">
+                            +{val} {stat}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                ))}
-                {Array.from({ length: Math.max(0, 9 - inventory.length) }).map(
-                  (_, i) => (
-                    <div
-                      key={i}
-                      className="aspect-square rounded-lg border border-dashed border-border/40 bg-black/10"
-                    />
-                  )
+                ) : (
+                  <div className="flex h-full items-center justify-center text-center text-xs text-muted-foreground italic">
+                    Select an item to view its data stream.
+                  </div>
                 )}
               </div>
             </TabsContent>
