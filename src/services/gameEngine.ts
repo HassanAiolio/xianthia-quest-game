@@ -56,7 +56,7 @@ function detectIntent(input: string): Intent {
   return "explore";
 }
 
-async function callGroq(userMessage: string): Promise<string> {
+async function callGroq(userMessage: string, systemMessage: string = NARRATOR_PROMPT): Promise<string> {
   const response = await fetch(GROQ_URL, {
     method: "POST",
     headers: {
@@ -64,22 +64,17 @@ async function callGroq(userMessage: string): Promise<string> {
       "Authorization": `Bearer ${import.meta.env.VITE_GROQ_API_KEY}`
     },
     body: JSON.stringify({
-      model: "llama-3.3-70b-versatile", 
+      model: "llama-3.3-70b-versatile",
       messages: [
-        { role: "system", content: NARRATOR_PROMPT },
+        { role: "system", content: systemMessage }, // <--- Now uses the parameter!
         { role: "user", content: userMessage }
       ],
       temperature: 0.7,
       max_tokens: 800,
-      response_format: { type: "json_object" } 
+      response_format: { type: "json_object" }
     }),
   });
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`Groq API error: ${response.status} — ${err}`);
-  }
-
+  if (!response.ok) throw new Error(`Groq error: ${response.status}`);
   const data = await response.json();
   return data.choices?.[0]?.message?.content ?? "{}";
 }
@@ -122,11 +117,12 @@ export async function generateNPCResponse(): Promise<LogMessage> {
 
 // HELPER 1: Generates the enemy based on story context
 async function generateEncounter(player: Player, location: Location, recentHistory: string): Promise<Enemy> {
-  const prompt = `The player (Level ${player.level}) triggered combat in ${location.name}. 
+  const systemPrompt = `You are an AI generating RPG enemy stats. Respond ONLY in valid JSON.`;
+  const userPrompt = `The player (Level ${player.level}) triggered combat in ${location.name}. 
   Recent events: ${recentHistory}. 
   Generate a balanced enemy. 
   
-  Respond ONLY with a JSON object:
+  JSON EXACT FORMAT:
   {
     "id": "enemy-${Date.now()}",
     "name": "Neon-Blighted Synth",
@@ -137,7 +133,7 @@ async function generateEncounter(player: Player, location: Location, recentHisto
     "imageDescription": "A malfunctioning android leaking cyan fluid in a dark alley"
   }`;
   
-  const raw = await callGroq(prompt);
+  const raw = await callGroq(userPrompt, systemPrompt); // <--- Bypasses Narrator Prompt!
   return JSON.parse(raw) as Enemy;
 }
 
@@ -161,14 +157,14 @@ export function calculateCombatTurn(player: Player, enemy: Enemy) {
 
 // HELPER 3: Asks the AI to narrate the math we just calculated
 async function narrateCombatTurn(player: Player, enemy: Enemy, action: string, math: any): Promise<string> {
-  const prompt = `The player used the action: "${action}". 
+  const systemPrompt = `You are a dark cyberpunk AI DM. Respond ONLY in valid JSON.`;
+  const userPrompt = `The player used the action: "${action}". 
   FACTS: The player hit ${enemy.name} for ${math.playerDamage} damage. ${enemy.name} hit the player back for ${math.enemyDamage} damage. Is the enemy dead? ${math.enemyDied}.
   
-  Write a 2-sentence visceral, dark cyberpunk combat narrative. 
-  Do NOT invent new damage numbers.
+  Write a 2-sentence visceral, dark cyberpunk combat narrative. Do NOT invent new damage numbers.
   Respond ONLY in JSON format: { "narrative": "text here" }`;
   
-  const raw = await callGroq(prompt);
+  const raw = await callGroq(userPrompt, systemPrompt);
   return JSON.parse(raw).narrative;
 }
 

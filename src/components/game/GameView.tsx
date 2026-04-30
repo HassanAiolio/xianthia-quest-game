@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { getLocationImageUrl } from "@/services/imageService";
+import { getLocationImageUrl, getEnemyImageUrl } from "@/services/imageService"; 
 import {
   Eye,
   Hand,
@@ -35,14 +35,18 @@ export function GameView() {
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const [enemyImage, setEnemyImage] = useState<string | null>(null);
   const [locationImage, setLocationImage] = useState<string | null>(null);
 
   useEffect(() => {
-    setLocationImage(null);
-    getLocationImageUrl(currentLocation.imageDescription)
-      .then(setLocationImage)
-      .catch(() => setLocationImage(null));
-  }, [currentLocation.imageDescription]);
+    if (currentEnemy) {
+      getEnemyImageUrl(currentEnemy.imageDescription)
+        .then(setEnemyImage)
+        .catch(() => setEnemyImage(null));
+    } else {
+      setEnemyImage(null);
+    }
+  }, [currentEnemy?.imageDescription]);
 
   useEffect(() => {
     if (!logRef.current) return;
@@ -345,11 +349,13 @@ export function GameView() {
               
               <div className="relative aspect-square overflow-hidden rounded-xl border border-destructive/40 mb-4 bg-black/40">
                 <div className="absolute inset-0 scanlines opacity-50 z-10 pointer-events-none" />
-                <img 
-                  src={`https://image.pollinations.ai/prompt/${encodeURIComponent(currentEnemy.imageDescription)}?width=512&height=512&nologo=true&seed=${currentEnemy.name}`} 
-                  alt={currentEnemy.name} 
-                  className="absolute inset-0 h-full w-full object-cover opacity-90"
-                />
+                {enemyImage && (
+                  <img 
+                    src={enemyImage} 
+                    alt={currentEnemy.name} 
+                    className="absolute inset-0 h-full w-full object-cover opacity-90"
+                  />
+                )}
               </div>
               
               <div className="font-display text-xl text-destructive mb-3 text-center shadow-destructive drop-shadow-md">
