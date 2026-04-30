@@ -31,3 +31,10 @@ export async function getLocationImageUrl(imageDescription: string): Promise<str
 
   return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=896&height=448&nologo=true&seed=${seed}`;
 }
+
+export async function getEnemyImageUrl(imageDescription: string): Promise<string> {
+  const prompt = `pixel art 16bit enemy sprite, ${imageDescription}, dark cyberpunk fantasy world, dynamic combat pose, detailed, RPG monster art style`;
+  const encodedPrompt = encodeURIComponent(prompt);
+  const seed = Math.floor(Math.random() * 100000);
+  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&nologo=true&seed=${seed}`;
+}

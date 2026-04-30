@@ -1,4 +1,4 @@
-import type { Player, LogMessage, Item, Location, Quest } from "@/types/game"; // Added Quest
+import type { Player, LogMessage, Item, Location, Quest, Enemy, GameState } from "@/types/game";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -9,6 +9,7 @@ You will receive the player's stats, inventory, current location, recent history
 You MUST respond with a valid JSON object matching this EXACT structure:
 {
   "narrative": "Your narrative response here. Describe sensory details, combat outcomes, or items found.",
+  "triggerEncounter": false,
   "effects": {
     "hpDelta": 0, 
     "mpDelta": 0, 
@@ -35,7 +36,8 @@ RULES:
 3. Combat: You are the combat arbiter. If the player attacks or is attacked, calculate reasonable damage, update hpDelta, and narrate the blow. 
 4. Leveling: If the player gains XP and their total goes over 100, narrate them feeling a surge of power.
 5. hpDelta/mpDelta/xpDelta: Negative for loss, positive for gain. 
-6. questChanges: ONLY output this if the player receives a new mission or completes a current objective.`;
+6. questChanges: ONLY output this if the player receives a new mission or completes a current objective.
+7. Encounters: If the player does something dangerous, searches a hostile area, or actively tries to attack something, set "triggerEncounter" to true.`;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -108,12 +110,66 @@ export interface ActionResult {
   effects?: { hpDelta?: number; mpDelta?: number; xpDelta?: number; };
   locationChange?: Location | null;
   inventoryChanges?: { add?: Item[]; remove?: string[] } | null;
-  questChanges?: { add?: Quest[]; update?: { id: string; status: "active" | "completed" }[] } | null; // <-- ADD THIS
+  questChanges?: { add?: Quest[]; update?: { id: string; status: "active" | "completed" }[] } | null;
+  enemyChange?: Enemy | "clear" | null;
+  stateChange?: GameState;
 }
 
 export async function generateNPCResponse(): Promise<LogMessage> {
   const raw = await callGroq("A mysterious NPC approaches the player. Generate a short cryptic greeting in character.");
   return parseAIResponse(raw).message;
+}
+
+// HELPER 1: Generates the enemy based on story context
+async function generateEncounter(player: Player, location: Location, recentHistory: string): Promise<Enemy> {
+  const prompt = `The player (Level ${player.level}) triggered combat in ${location.name}. 
+  Recent events: ${recentHistory}. 
+  Generate a balanced enemy. 
+  
+  Respond ONLY with a JSON object:
+  {
+    "id": "enemy-${Date.now()}",
+    "name": "Neon-Blighted Synth",
+    "hp": ${30 + (player.level * 10)},
+    "maxHp": ${30 + (player.level * 10)},
+    "minDamage": ${2 + player.level},
+    "maxDamage": ${6 + player.level},
+    "imageDescription": "A malfunctioning android leaking cyan fluid in a dark alley"
+  }`;
+  
+  const raw = await callGroq(prompt);
+  return JSON.parse(raw) as Enemy;
+}
+
+// HELPER 2: Pure TypeScript math for the combat turn
+export function calculateCombatTurn(player: Player, enemy: Enemy) {
+  // Player rolls 1d6 + their Strength stat
+  const playerRoll = Math.floor(Math.random() * 6) + 1; 
+  const playerDamage = player.stats.str + playerRoll;
+  
+  const newEnemyHp = Math.max(0, enemy.hp - playerDamage);
+  const enemyDied = newEnemyHp === 0;
+
+  // Enemy hits back if it survives
+  let enemyDamage = 0;
+  if (!enemyDied) {
+    enemyDamage = Math.floor(Math.random() * (enemy.maxDamage - enemy.minDamage + 1)) + enemy.minDamage;
+  }
+  
+  return { playerDamage, enemyDamage, newEnemyHp, enemyDied };
+}
+
+// HELPER 3: Asks the AI to narrate the math we just calculated
+async function narrateCombatTurn(player: Player, enemy: Enemy, action: string, math: any): Promise<string> {
+  const prompt = `The player used the action: "${action}". 
+  FACTS: The player hit ${enemy.name} for ${math.playerDamage} damage. ${enemy.name} hit the player back for ${math.enemyDamage} damage. Is the enemy dead? ${math.enemyDied}.
+  
+  Write a 2-sentence visceral, dark cyberpunk combat narrative. 
+  Do NOT invent new damage numbers.
+  Respond ONLY in JSON format: { "narrative": "text here" }`;
+  
+  const raw = await callGroq(prompt);
+  return JSON.parse(raw).narrative;
 }
 
 export async function processAction(
@@ -122,33 +178,73 @@ export async function processAction(
   gameLog: LogMessage[],
   inventory: Item[],
   currentLocation: Location,
-  quests: Quest[] // <-- NEW PARAMETER
+  quests: Quest[],
+  currentEnemy: Enemy | null, // <-- NEW PARAMETER
+  gameState: GameState        // <-- NEW PARAMETER
 ): Promise<ActionResult> {
-  
   const recentHistory = gameLog.slice(-5).map(log => `${log.sender}: ${log.text}`).join('\n');
+
+  // === ROUTE A: WE ARE IN COMBAT ===
+  if (gameState === "COMBAT" && currentEnemy) {
+    // 1. Do the Math
+    const math = calculateCombatTurn(player, currentEnemy);
+    
+    // 2. Get the AI to narrate it
+    const narrative = await narrateCombatTurn(player, currentEnemy, input, math);
+    
+    return {
+      message: makeLogMessage("AI", narrative),
+      effects: { 
+        hpDelta: -math.enemyDamage, 
+        xpDelta: math.enemyDied ? 25 : 0 // Give 25 XP for a kill!
+      },
+      enemyChange: math.enemyDied ? "clear" : { ...currentEnemy, hp: math.newEnemyHp },
+      stateChange: math.enemyDied ? "PLAYING" : "COMBAT"
+    };
+  }
+
+  // === ROUTE B: WE ARE EXPLORING ===
   const inventoryList = inventory.map(i => `${i.name}`).join(', ') || "Empty";
-  // Format the quests so the AI can read them!
   const questList = quests.map(q => `[${q.status.toUpperCase()}] ${q.title}: ${q.description} (ID: ${q.id})`).join('\n') || "None";
-
-  const prompt = `CURRENT STATE:
-Player: ${player.name} (Level ${player.level} ${player.class})
-HP: ${player.hp}/${player.maxHp} | MP: ${player.mp}/${player.maxMp} | XP: ${player.xp}
-Current Location: ${currentLocation.name} - ${currentLocation.description}
-Inventory: ${inventoryList}
-Active Quests:
-${questList}
-
-Recent History:
-${recentHistory}
-
-Player Action: ${input}
-
-Calculate the outcome, narrate the result, and manage the game state via JSON.`;
+  
+  const prompt = `CURRENT STATE: Player: ${player.name} (Level ${player.level} ${player.class}) HP: ${player.hp}/${player.maxHp} | MP: ${player.mp}/${player.maxMp} | XP: ${player.xp}
+  Current Location: ${currentLocation.name} - ${currentLocation.description}
+  Inventory: ${inventoryList}
+  Active Quests: ${questList}
+  Recent History: ${recentHistory}
+  Player Action: ${input}
+  Calculate the outcome, narrate the result, and manage the game state via JSON.`;
 
   const raw = await callGroq(prompt);
   console.log("====== PURE AI RESPONSE ======");
   console.log(raw);
   console.log("==============================");
+  
+  const parsedAiResponse = parseAIResponse(raw);
 
-  return parseAIResponse(raw);
+  // We need to peek into the raw parsed JSON to see if triggerEncounter is true
+  let rawJson;
+  try {
+    rawJson = JSON.parse(raw);
+  } catch {
+    rawJson = {};
+  }
+
+  let enemyChange: Enemy | "clear" | null = null;
+  let stateChange: GameState | undefined = undefined;
+
+  // If the AI decides an encounter happens!
+  if (rawJson.triggerEncounter) {
+    const newEnemy = await generateEncounter(player, currentLocation, recentHistory);
+    enemyChange = newEnemy;
+    stateChange = "COMBAT";
+    // Inject a warning into the narrative log
+    parsedAiResponse.message.text += `\n\n>> WARNING: ENCOUNTER DETECTED: ${newEnemy.name} <<`;
+  }
+
+  return {
+    ...parsedAiResponse,
+    enemyChange,
+    stateChange
+  };
 }

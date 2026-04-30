@@ -15,6 +15,7 @@ import type {
   Location,
   Player,
   Quest,
+  Enemy,
 } from "@/types/game";
 
 const STORAGE_KEY = "xianthia-quest:v1";
@@ -54,6 +55,7 @@ const initialSnapshot: GameSnapshot = {
       status: "active",
     },
   ],
+  currentEnemy: null,
 };
 
 type Action =
@@ -66,7 +68,8 @@ type Action =
   | { type: "REMOVE_ITEM"; id: string }
   | { type: "SET_LOCATION"; value: Location }
   | { type: "ADD_QUEST"; value: Quest }
-  | { type: "UPDATE_QUEST"; id: string; status: "active" | "completed" } // <-- ADD THIS
+  | { type: "UPDATE_QUEST"; id: string; status: "active" | "completed" } 
+  | { type: "SET_ENEMY"; value: Enemy | null }
   | { type: "RESET" }
   | { type: "HYDRATE"; value: GameSnapshot };
 
@@ -121,13 +124,15 @@ function reducer(state: GameSnapshot, action: Action): GameSnapshot {
       return { ...state, currentLocation: action.value };
     case "ADD_QUEST":
       return { ...state, quests: [...state.quests, action.value] };
-    case "UPDATE_QUEST": // <-- NEW LOGIC
+    case "UPDATE_QUEST": 
       return {
         ...state,
         quests: state.quests.map((q) =>
           q.id === action.id ? { ...q, status: action.status } : q
         ),
       };
+    case "SET_ENEMY":
+      return { ...state, currentEnemy: action.value };
     case "HYDRATE":
       return action.value;
     case "RESET":
@@ -148,6 +153,7 @@ interface GameContextValue {
   setLocation: (l: Location) => void;
   addQuest: (q: Quest) => void;
   updateQuest: (id: string, status: "active" | "completed") => void;
+  setEnemy: (e: Enemy | null) => void;
   reset: () => void;
 }
 
@@ -191,11 +197,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     (id: string, status: "active" | "completed") => dispatch({ type: "UPDATE_QUEST", id, status }),
     []
   );
+  const setEnemy = useCallback((e: Enemy | null) => dispatch({ type: "SET_ENEMY", value: e }), []);
   const reset = useCallback(() => dispatch({ type: "RESET" }), []);
 
   const value = useMemo<GameContextValue>(
-    () => ({ state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, reset }),
-    [state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, reset]
+    () => ({ state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, setEnemy, reset }),
+    [state, setGameState, setPlayer, addLog, applyEffects, addItem, removeItem, setLocation, addQuest, updateQuest, setEnemy, reset]
   );
 
   return <GameContext.Provider value={value}>{children}</GameContext.Provider>;

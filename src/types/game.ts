@@ -1,4 +1,4 @@
-export type GameState = "LANDING" | "CHARACTER_CREATION" | "PLAYING" | "GAMEOVER";
+export type GameState = "LANDING" | "CHARACTER_CREATION" | "PLAYING" | "COMBAT" | "GAMEOVER";
 
 export type CharacterClass = "Chrono-Mage" | "Neural-Stalker" | "Rift-Knight";
 
@@ -20,6 +20,16 @@ export interface Player {
   xp: number;
   level: number;
   portraitUrl?: string;
+}
+
+export interface Enemy {
+  id: string;
+  name: string;
+  hp: number;
+  maxHp: number;
+  minDamage: number;
+  maxDamage: number;
+  imageDescription: string;
 }
 
 export type ItemType = "weapon" | "armor" | "consumable" | "artifact" | "key";
@@ -62,6 +72,7 @@ export interface GameSnapshot {
   gameLog: LogMessage[];
   currentLocation: Location;
   quests: Quest[];
+  currentEnemy: Enemy | null;
 }
 
 export interface ClassDefinition {

@@ -30,8 +30,8 @@ const QUICK_ACTIONS = [
 ] as const;
 
 export function GameView() {
-  const { state, addLog, applyEffects, setGameState, reset, setLocation, addItem, removeItem, addQuest, updateQuest } = useGameStore();
-  const { player, inventory, gameLog, currentLocation, quests } = state; // make sure quests is destructured!
+  const { state, addLog, applyEffects, setGameState, reset, setLocation, addItem, removeItem, addQuest, updateQuest, setEnemy } = useGameStore(); // <-- Added setEnemy
+  const { player, inventory, gameLog, currentLocation, quests, currentEnemy } = state; 
   const [input, setInput] = useState("");
   const [thinking, setThinking] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
@@ -73,8 +73,8 @@ export function GameView() {
     
     setThinking(true);
     try {
-      // 1. Pass quests to the engine
-      const result = await processAction(text, player, gameLog, inventory, currentLocation, quests);
+      // Pass currentEnemy and state.gameState to processAction
+      const result = await processAction(text, player, gameLog, inventory, currentLocation, quests, currentEnemy, state.gameState);
       
       addLog(result.message);
       if (result.effects) applyEffects(result.effects);
@@ -83,13 +83,20 @@ export function GameView() {
       if (result.inventoryChanges?.add) result.inventoryChanges.add.forEach(item => addItem(item));
       if (result.inventoryChanges?.remove) result.inventoryChanges.remove.forEach(id => removeItem(id));
       
-      // Manage Quests
       if (result.questChanges?.add) {
          result.questChanges.add.forEach(q => addQuest(q));
       }
       if (result.questChanges?.update) {
          result.questChanges.update.forEach(q => updateQuest(q.id, q.status));
       }
+
+      // === NEW LOGIC ===
+      // Handle Enemy State
+      if (result.enemyChange === "clear") setEnemy(null);
+      else if (result.enemyChange) setEnemy(result.enemyChange);
+
+      // Handle Game State (switching in and out of COMBAT)
+      if (result.stateChange) setGameState(result.stateChange);
       
     } catch (error) {
       console.error(error);
@@ -326,10 +333,38 @@ export function GameView() {
           </div>
         </main>
 
-        {/* RIGHT — Data-Pad */}
-        <aside className="glass-strong order-3 flex flex-col rounded-2xl p-4 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden">
-          <Tabs defaultValue="inventory" className="flex h-full flex-col">
-            <TabsList className="grid w-full grid-cols-2 bg-black/30">
+        {/* RIGHT - Data-Pad / Enemy View */}
+        <aside className="glass-strong order-3 flex flex-col gap-4 rounded-2xl p-4 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden">
+          
+          {/* ENEMY CARD (Only visible in COMBAT) */}
+          {state.gameState === "COMBAT" && currentEnemy && (
+            <div className="shrink-0 flex flex-col animate-fade-up border border-destructive/50 bg-[color-mix(in_oklch,var(--destructive)_10%,transparent)] p-4 rounded-xl shadow-[0_0_24px_color-mix(in_oklch,var(--destructive)_20%,transparent)]">
+              <div className="text-xs uppercase tracking-[0.3em] text-destructive animate-pulse mb-3 text-center font-bold">
+                Combat Initiated
+              </div>
+              
+              <div className="relative aspect-square overflow-hidden rounded-xl border border-destructive/40 mb-4 bg-black/40">
+                <div className="absolute inset-0 scanlines opacity-50 z-10 pointer-events-none" />
+                <img 
+                  src={`https://image.pollinations.ai/prompt/${encodeURIComponent(currentEnemy.imageDescription)}?width=512&height=512&nologo=true&seed=${currentEnemy.name}`} 
+                  alt={currentEnemy.name} 
+                  className="absolute inset-0 h-full w-full object-cover opacity-90"
+                />
+              </div>
+              
+              <div className="font-display text-xl text-destructive mb-3 text-center shadow-destructive drop-shadow-md">
+                {currentEnemy.name}
+              </div>
+              
+              <div className="mt-auto">
+                <VitalBar label="Enemy HP" value={currentEnemy.hp} max={currentEnemy.maxHp} variant="hp" />
+              </div>
+            </div>
+          )}
+
+          {/* DATA-PAD TABS (Always visible) */}
+          <Tabs defaultValue="inventory" className="flex flex-1 flex-col min-h-0">
+            <TabsList className="grid w-full shrink-0 grid-cols-2 bg-black/30">
               <TabsTrigger value="inventory" className="data-[state=active]:bg-[color-mix(in_oklch,var(--gold)_15%,transparent)] data-[state=active]:text-[var(--gold)]">
                 <Package className="mr-1.5 h-3.5 w-3.5" /> Inventory
               </TabsTrigger>
@@ -337,13 +372,13 @@ export function GameView() {
                 <Scroll className="mr-1.5 h-3.5 w-3.5" /> Quests
               </TabsTrigger>
             </TabsList>
-
-            <TabsContent value="inventory" className="mt-3 flex-1">
+            
+            <TabsContent value="inventory" className="mt-3 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden">
               <div className="grid grid-cols-3 gap-2">
                 {inventory.map((item) => (
                   <div
                     key={item.id}
-                    title={`${item.name} — ${item.description}`}
+                    title={`${item.name} - ${item.description}`}
                     className="group relative aspect-square rounded-lg border border-glass-border bg-black/30 p-2 transition-colors hover:border-[var(--gold)]/60 hover:bg-[color-mix(in_oklch,var(--gold)_8%,transparent)]"
                   >
                     <div className="flex h-full flex-col items-center justify-center text-center">
@@ -364,8 +399,8 @@ export function GameView() {
                 )}
               </div>
             </TabsContent>
-
-            <TabsContent value="quests" className="mt-3 space-y-2">
+            
+            <TabsContent value="quests" className="mt-3 flex-1 overflow-y-auto pr-1 space-y-2 [&::-webkit-scrollbar]:hidden">
               {quests.map((q) => (
                 <div
                   key={q.id}
