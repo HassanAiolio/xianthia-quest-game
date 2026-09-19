@@ -1,45 +1,29 @@
-// src/services/imageService.ts
+import type { CharacterClass, Enemy, Location } from "@/types/game";
+import { hashSeed } from "@/game/dice";
 
-export async function getPortraitUrl(
-  name: string,
-  characterClass: string,
-  appearance: string
-): Promise<string> {
-  const classPrompts: Record<string, string> = {
-    "Chrono-Mage": "robed mage glowing hourglass staff time magic purple energy",
-    "Neural-Stalker": "cyberpunk infiltrator wetware implants stealth dark hood neon",
-    "Rift-Knight": "armored knight singularity blade void energy dark plate armor",
-  };
+type ImageKind = "portrait" | "enemy" | "scene";
 
-  const classDetail = classPrompts[characterClass] ?? characterClass;
-  const appearanceDetail = appearance.trim() ? `, ${appearance.trim()}` : "";
-  const prompt = `pixel art 16bit portrait bust shot, ${name}, ${classDetail}${appearanceDetail}, dark cyberpunk fantasy background, dramatic lighting, detailed face, RPG character art style`;
-
-  // Pollinations.ai creates images directly from the URL. No API keys or fetch needed!
-  const encodedPrompt = encodeURIComponent(prompt);
-  // Using a random seed so characters with the same name look different
-  const seed = Math.floor(Math.random() * 100000); 
-  
-  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&nologo=true&seed=${seed}`;
+/**
+ * Images come from the server (/api/image), which holds the Hugging Face token and
+ * caches each picture on disk. Same kind + subject + seed = same cached image.
+ */
+export function imageUrl(kind: ImageKind, subject: string, seed: number): string {
+  return `/api/image?kind=${kind}&seed=${seed}&subject=${encodeURIComponent(subject.trim().slice(0, 300))}`;
 }
 
-export async function getLocationImageUrl(imageDescription: string): Promise<string> {
-  const prompt = `pixel art 16bit wide landscape, ${imageDescription}, dark cyberpunk fantasy world, atmospheric, dramatic lighting, detailed environment, RPG background art style`;
-  
-  const encodedPrompt = encodeURIComponent(prompt);
-  const seed = Math.floor(Math.random() * 100000);
+const CLASS_LOOKS: Record<CharacterClass, string> = {
+  "Chrono-Mage": "robed mage with a glowing hourglass staff, purple time magic",
+  "Neural-Stalker": "cyberpunk infiltrator with wetware implants, dark hood, neon visor",
+  "Rift-Knight": "armored knight with a singularity blade, dark plate armor crackling with void energy",
+};
 
-  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=896&height=448&nologo=true&seed=${seed}`;
+export function portraitUrl(cls: CharacterClass, appearance: string, seed: number): string {
+  const look = appearance.trim() ? `${CLASS_LOOKS[cls]}, ${appearance.trim()}` : CLASS_LOOKS[cls];
+  return imageUrl("portrait", look, seed);
 }
 
-// Add enemyId as the second parameter
-export async function getEnemyImageUrl(imageDescription: string, enemyId: string): Promise<string> {
-  const prompt = `pixel art 16bit enemy sprite, ${imageDescription}, dark cyberpunk fantasy world, dynamic combat pose, detailed, RPG monster art style`;
-  const encodedPrompt = encodeURIComponent(prompt);
-  
-  // Extract numbers from the unique enemyId to create a permanent, consistent seed!
-  // If for some reason there are no numbers, it falls back to a random seed.
-  const seed = parseInt(enemyId.replace(/\D/g, '')) || Math.floor(Math.random() * 100000);
-  
-  return `https://image.pollinations.ai/prompt/${encodedPrompt}?width=512&height=512&nologo=true&seed=${seed}`;
-}
+export const sceneUrl = (loc: Location): string =>
+  imageUrl("scene", loc.imageDescription || loc.name, hashSeed(loc.name));
+
+export const enemyUrl = (enemy: Enemy): string =>
+  imageUrl("enemy", enemy.imageDescription || enemy.name, hashSeed(enemy.id));

@@ -1,4 +1,4 @@
-export type GameState = "LANDING" | "CHARACTER_CREATION" | "PLAYING" | "COMBAT" | "GAMEOVER";
+export type GameState = "LANDING" | "CHARACTER_CREATION" | "PLAYING" | "COMBAT" | "GAMEOVER" | "VICTORY";
 
 export type CharacterClass = "Chrono-Mage" | "Neural-Stalker" | "Rift-Knight";
 
@@ -9,6 +9,8 @@ export interface Stats {
   lck: number;
 }
 
+export type StatKey = keyof Stats;
+
 export interface Player {
   name: string;
   class: CharacterClass;
@@ -17,19 +19,29 @@ export interface Player {
   maxHp: number;
   mp: number;
   maxMp: number;
+  /** XP toward the next level (resets on level-up). */
   xp: number;
   level: number;
   portraitUrl?: string;
+  appearance?: string;
   statPoints: number;
 }
+
+export type EnemyTier = "minion" | "standard" | "elite" | "boss";
 
 export interface Enemy {
   id: string;
   name: string;
+  tier: EnemyTier;
+  level: number;
   hp: number;
   maxHp: number;
-  minDamage: number;
-  maxDamage: number;
+  ac: number;
+  attackBonus: number;
+  /** Damage per hit: 1d{damageDie} + damageBonus. */
+  damageDie: number;
+  damageBonus: number;
+  xpReward: number;
   imageDescription: string;
 }
 
@@ -41,16 +53,23 @@ export interface Item {
   type: ItemType;
   description: string;
   statBonus?: Partial<Stats>;
-  icon?: string;
+  /** Armor class bonus while equipped (armor only). */
+  armorBonus?: number;
+  /** What using a consumable restores. */
+  effect?: { hp?: number; mp?: number };
+  equipped?: boolean;
 }
 
 export type LogSender = "SYSTEM" | "AI" | "PLAYER";
+/** Visual flavour for SYSTEM lines. "error" = out-of-game problem, never shown to the AI. */
+export type LogTone = "info" | "roll" | "reward" | "danger" | "error";
 
 export interface LogMessage {
   id: string;
   sender: LogSender;
   text: string;
   timestamp: number;
+  tone?: LogTone;
 }
 
 export interface Location {
@@ -64,9 +83,12 @@ export interface Quest {
   title: string;
   description: string;
   status: "active" | "completed";
+  /** Main-story quests are completed by the code (chapter boss), never by the narrator. */
+  main?: boolean;
 }
 
 export interface GameSnapshot {
+  version: 2;
   gameState: GameState;
   player: Player | null;
   inventory: Item[];
@@ -74,6 +96,16 @@ export interface GameSnapshot {
   currentLocation: Location;
   quests: Quest[];
   currentEnemy: Enemy | null;
+  /** 1-based chapter index; CHAPTERS.length + 1 means the main story is finished. */
+  chapter: number;
+  /** Story turns taken in the current chapter — gates the chapter boss. */
+  turnsInChapter: number;
+  /** Running summary of the adventure, fed to the narrator as long-term memory. */
+  chronicle: string;
+  /** Id of the last gameLog entry the chronicle covers ("" = none yet). */
+  chronicleUpTo: string;
+  /** Next-action ideas proposed by the narrator. */
+  suggestions: string[];
 }
 
 export interface ClassDefinition {
@@ -81,7 +113,10 @@ export interface ClassDefinition {
   tagline: string;
   description: string;
   baseStats: Stats;
+  primary: StatKey;
   signature: string;
+  signatureText: string;
+  growth: { hp: number; mp: number };
 }
 
 export const CLASS_DEFS: ClassDefinition[] = [
@@ -91,7 +126,10 @@ export const CLASS_DEFS: ClassDefinition[] = [
     description:
       "Bends time itself, slowing foes and replaying lost moves. Fragile of body, infinite of mind.",
     baseStats: { str: 4, int: 9, dex: 5, lck: 6 },
+    primary: "int",
     signature: "Temporal Cascade",
+    signatureText: "Guaranteed hit (2d8 + INT + level). Time slows: the enemy strikes back at disadvantage.",
+    growth: { hp: 7, mp: 8 },
   },
   {
     id: "Neural-Stalker",
@@ -99,7 +137,10 @@ export const CLASS_DEFS: ClassDefinition[] = [
     description:
       "A wetware-augmented infiltrator. Sees through walls, strikes from impossible angles.",
     baseStats: { str: 5, int: 6, dex: 9, lck: 4 },
+    primary: "dex",
     signature: "Spectral Hack",
+    signatureText: "Guaranteed critical strike (3d8 + DEX + level). The heaviest burst in the game.",
+    growth: { hp: 9, mp: 6 },
   },
   {
     id: "Rift-Knight",
@@ -107,10 +148,17 @@ export const CLASS_DEFS: ClassDefinition[] = [
     description:
       "Forged in dimensional war. Carries a singularity blade. Walks where nothing else can.",
     baseStats: { str: 9, int: 4, dex: 5, lck: 6 },
+    primary: "str",
     signature: "Voidstrike",
+    signatureText: "Guaranteed hit (2d10 + STR + level). Heals you for a third of the damage dealt.",
+    growth: { hp: 11, mp: 4 },
   },
 ];
 
 export const STARTING_POINTS = 15;
 export const MIN_STAT = 1;
 export const MAX_STAT = 15;
+
+export function classDef(id: CharacterClass): ClassDefinition {
+  return CLASS_DEFS.find((c) => c.id === id) ?? CLASS_DEFS[0];
+}

@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, ArrowRight, Loader2, Minus, Plus, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Dices, Minus, Plus, Sparkles, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { GameImage } from "@/components/game/GameImage";
 import { useGameStore } from "@/hooks/useGameStore";
-import { useEffect } from "react";
-import { getPortraitUrl } from "@/services/imageService";
+import { useApiStatus } from "@/hooks/useApiStatus";
+import { portraitUrl } from "@/services/imageService";
 import {
   CLASS_DEFS,
   MAX_STAT,
@@ -15,7 +16,8 @@ import {
   type CharacterClass,
   type Stats,
 } from "@/types/game";
-import { makeLogMessage } from "@/services/gameEngine";
+import { makeLog } from "@/game/log";
+import { baseMaxHp, baseMaxMp, mod } from "@/game/stats";
 import { cn } from "@/lib/utils";
 
 type Step = 0 | 1 | 2;
@@ -23,11 +25,15 @@ type Step = 0 | 1 | 2;
 const STEP_LABELS = ["Identity", "Archetype", "Attributes"];
 
 export function CharacterCreationView() {
-  const { setPlayer, setGameState, addLog, reset } = useGameStore();
+  const { setGameState, startGame } = useGameStore();
+  const apiStatus = useApiStatus();
   const [step, setStep] = useState<Step>(0);
   const [name, setName] = useState("");
+  const [appearance, setAppearance] = useState("");
   const [chosenClass, setChosenClass] = useState<CharacterClass | null>(null);
   const [stats, setStats] = useState<Stats>({ str: 0, int: 0, dex: 0, lck: 0 });
+  // Generated only on request: each portrait costs image credits.
+  const [portrait, setPortrait] = useState<string | null>(null);
 
   const baseStats = useMemo(
     () => CLASS_DEFS.find((c) => c.id === chosenClass)?.baseStats,
@@ -63,65 +69,45 @@ export function CharacterCreationView() {
       dex: baseStats.dex + stats.dex,
       lck: baseStats.lck + stats.lck,
     };
-    const maxHp = 60 + finalStats.str * 6;
-    const maxMp = 30 + finalStats.int * 5;
+    const maxHp = baseMaxHp(finalStats);
+    const maxMp = baseMaxMp(finalStats);
 
-    reset();
-    setPlayer({
-      name: name.trim(),
-      class: chosenClass,
-      stats: finalStats,
-      hp: maxHp,
-      maxHp,
-      mp: maxMp,
-      maxMp,
-      xp: 0,
-      level: 1,
-      portraitUrl: portraitUrl || undefined,
-      statPoints: 0,
-    });
-    addLog(
-      makeLogMessage(
-        "SYSTEM",
-        `${name.trim()} the ${chosenClass} awakens in the Obsidian Antechamber.`
-      )
+    startGame(
+      {
+        name: name.trim(),
+        class: chosenClass,
+        stats: finalStats,
+        hp: maxHp,
+        maxHp,
+        mp: maxMp,
+        maxMp,
+        xp: 0,
+        level: 1,
+        portraitUrl: portrait ?? undefined,
+        appearance: appearance.trim() || undefined,
+        statPoints: 0,
+      },
+      [
+        makeLog("SYSTEM", `${name.trim()} the ${chosenClass} awakens in the Obsidian Antechamber.`),
+        makeLog(
+          "AI",
+          "You open your eyes. Cyan glyphs drift across walls of black glass. The air tastes of ozone and forgotten names. A single archway pulses ahead — what do you do?"
+        ),
+      ]
     );
-    addLog(
-      makeLogMessage(
-        "AI",
-        "You open your eyes. Cyan glyphs drift across walls of black glass. The air tastes of ozone and forgotten names. A single archway pulses ahead — what do you do?"
-      )
-    );
-    setGameState("PLAYING");
   }
 
-  const [appearance, setAppearance] = useState("");
-  const [portraitUrl, setPortraitUrl] = useState<string | null>(null);
-  const [portraitLoading, setPortraitLoading] = useState(false);
+  function synthesizePortrait() {
+    if (!chosenClass) return;
+    setPortrait(portraitUrl(chosenClass, appearance, Math.floor(Math.random() * 1_000_000)));
+  }
 
-  useEffect(() => {
-    if (!nameValid || !chosenClass) return;
-
-    // 1. Immediately show the loading spinner when they type
-    setPortraitLoading(true);
-
-    // 2. Set a timer to wait 1000ms (1 second)
-    const debounceTimer = setTimeout(() => {
-      getPortraitUrl(name, chosenClass, appearance)
-        .then((url) => {
-          setPortraitUrl(url);
-        })
-        .catch((err) => {
-          console.error("Portrait synthesis failed:", err);
-          setPortraitLoading(false);
-        });
-    }, 1000);
-
-    // 3. CLEANUP: If they type another letter before the 1 second is up, 
-    // this cancels the previous timer so we don't generate the half-finished word.
-    return () => clearTimeout(debounceTimer);
-    
-  }, [name, chosenClass, appearance, nameValid]);
+  const preview = baseStats && {
+    str: baseStats.str + stats.str,
+    int: baseStats.int + stats.int,
+    dex: baseStats.dex + stats.dex,
+    lck: baseStats.lck + stats.lck,
+  };
 
   return (
     <div className="relative min-h-screen px-4 py-10 sm:px-8">
@@ -248,7 +234,11 @@ export function CharacterCreationView() {
                       return (
                         <button
                           key={c.id}
-                          onClick={() => setChosenClass(c.id)}
+                          aria-pressed={active}
+                          onClick={() => {
+                            if (c.id !== chosenClass) setPortrait(null);
+                            setChosenClass(c.id);
+                          }}
                           className={cn(
                             "group relative flex h-full flex-col rounded-xl border p-4 text-left transition-all",
                             active
@@ -371,6 +361,22 @@ export function CharacterCreationView() {
                       );
                     })}
                   </div>
+
+                  {preview && (
+                    <div className="grid grid-cols-3 gap-2 text-center" aria-live="polite">
+                      {[
+                        { label: "Max HP", value: baseMaxHp(preview), hint: "30 + 3 per STR" },
+                        { label: "Max MP", value: baseMaxMp(preview), hint: "20 + 3 per INT" },
+                        { label: "Armor", value: 10 + mod(preview.dex), hint: "10 + DEX bonus" },
+                      ].map((d) => (
+                        <div key={d.label} className="rounded-lg border border-cyan/20 bg-black/20 p-2">
+                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{d.label}</div>
+                          <div className="font-display text-xl text-cyan">{d.value}</div>
+                          <div className="text-[10px] text-muted-foreground">{d.hint}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -383,36 +389,41 @@ export function CharacterCreationView() {
             </div>
             
             <div className="relative mt-3 aspect-[3/4] overflow-hidden rounded-xl border border-glass-border bg-gradient-to-br from-[oklch(0.18_0.04_270)] to-[oklch(0.12_0.03_290)]">
-              {/* Overlay Scanlines */}
-              <div className="absolute inset-0 scanlines opacity-40 z-10 pointer-events-none" />
-              
-              {/* Portrait Image */}
-              {portraitUrl && (
-                <img
-                  src={portraitUrl}
-                  alt="AI Portrait"
-                  className="absolute inset-0 h-full w-full object-cover"
-                  onLoad={() => setPortraitLoading(false)}
-                  onError={() => setPortraitLoading(false)}
-                />
-              )}
-
-              {/* Loading State */}
-              {(!portraitUrl || portraitLoading) && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center bg-black/40 backdrop-blur-sm">
-                  <Loader2 className="h-8 w-8 animate-spin text-cyan/70" />
-                  <div className="px-4 text-xs text-muted-foreground">
-                    {nameValid && chosenClass
-                      ? "Synthesizing portrait…"
-                      : "Awaiting character data…"}
+              <GameImage
+                src={portrait}
+                alt={`Portrait of ${name.trim() || "your character"}`}
+                fallback={
+                  <div className="flex flex-col items-center gap-3 px-4 text-center">
+                    <User className="h-12 w-12 text-cyan/40" />
+                    <span className="text-xs text-muted-foreground">
+                      {apiStatus?.images === false
+                        ? "Image generation is off (no HF_TOKEN on the server)."
+                        : portrait
+                          ? "Synthesizing portrait… (about 10 seconds)"
+                          : chosenClass
+                            ? "Describe your look, then synthesize a portrait."
+                            : "Choose an archetype to synthesize a portrait."}
+                    </span>
                   </div>
-                </div>
-              )}
+                }
+              />
+              <div className="absolute inset-0 scanlines opacity-40 z-10 pointer-events-none" />
 
               {/* Decorative Borders */}
               <div className="absolute inset-x-0 top-0 h-px z-20" style={{ background: "var(--gradient-cyan)" }} />
               <div className="absolute inset-x-0 bottom-0 h-px z-20" style={{ background: "var(--gradient-gold)" }} />
             </div>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={synthesizePortrait}
+              disabled={!chosenClass || apiStatus?.images === false}
+              className="mt-3 w-full border-glass-border text-xs hover:border-cyan/50 hover:text-cyan"
+            >
+              {portrait ? <Dices className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {portrait ? "Reroll portrait" : "Synthesize portrait"}
+            </Button>
 
             <div className="mt-3 space-y-1 text-xs text-muted-foreground">
               <div>
