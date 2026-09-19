@@ -1,4 +1,4 @@
-import type { ServerConfig } from "./config";
+import type { ServerConfig } from "./config.js";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ServerConfig } from "./config";
+import type { ServerConfig } from "./config.js";
 
 // FLUX.1-schnell through the Hugging Face router (nscale provider).
 // hf-inference itself dropped FLUX; nscale speaks the OpenAI images API.
@@ -75,8 +75,13 @@ export function generateImage(cfg: ServerConfig, kind: ImageKind, subject: strin
     const b64 = data?.data?.[0]?.b64_json;
     if (typeof b64 !== "string") throw new ImageError("empty image reply", 502);
     const png = Buffer.from(b64, "base64");
-    await mkdir(cfg.imageCacheDir, { recursive: true });
-    await writeFile(path.join(cfg.imageCacheDir, `${key}.png`), png);
+    try {
+      await mkdir(cfg.imageCacheDir, { recursive: true });
+      await writeFile(path.join(cfg.imageCacheDir, `${key}.png`), png);
+    } catch (err) {
+      // A cache miss later is fine; failing the image the player is waiting for is not.
+      console.warn(`[api] image cache write failed: ${(err as Error).message}`);
+    }
     return png;
   })().finally(() => inFlight.delete(key));
   inFlight.set(key, job);

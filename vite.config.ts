@@ -3,7 +3,7 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "node:path";
-import { xianthiaApi } from "./server/api";
+import { xianthiaApi } from "./server/api.js";
 
 export default defineConfig(({ mode }) => {
   // Empty prefix = load every variable, including server-only secrets (no VITE_ prefix).

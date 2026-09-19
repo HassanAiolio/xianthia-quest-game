@@ -57,9 +57,20 @@ src/
   components/game/      Screens and panels
 ```
 
+## Deploying on Vercel
+
+The `api/` folder holds three Vercel Functions (`/api/status`, `/api/llm`, `/api/image`). They reuse the code in `server/`, and Vercel picks them up automatically next to the Vite build.
+
+1. In the Vercel project, open **Settings → Environment Variables** and add `GROQ_API_KEY` (and `HF_TOKEN` for art) for **Production** and **Preview**.
+2. Redeploy: environment variables only apply to new deployments.
+3. Check `https://<your-site>/api/status`. It should return `{"llm":true,"images":true}`.
+
+On Vercel, generated images are cached in `/tmp` (per instance) and by Vercel's CDN, so each picture is paid for once.
+
 ## Limits worth knowing
 
 - **Groq free tier:** about 8,000 tokens per minute per model, and a narration turn uses about 2,200. The proxy spreads calls across two models and falls back automatically. If both are exhausted, the game says so and gives your text back to retry.
 - **Images** use Hugging Face inference credits (the free tier has a small monthly allowance). Each picture is generated once and cached on disk. Portraits are generated only on request.
-- **Deploying:** `vite build` produces static files only. To host it, serve `dist/` from a Node server that mounts `createApiMiddleware` from `server/api.ts` (or run `npm run preview` behind a reverse proxy). Add stricter rate limiting before exposing it publicly.
+- **Other hosts:** `vite build` produces static files only, and the game needs `/api`. Either serve `dist/` from a Node server that mounts `createApiMiddleware` from `server/api.ts`, or run `npm run preview` behind a reverse proxy.
+- **Public exposure:** the API refuses browser requests from other websites and rate-limits per IP. The limiter is in memory, so on serverless it applies per instance. Add a platform firewall rule if you see abuse.
 - **Saves** live in the browser's `localStorage` (`xianthia-quest:v2`). Saves from the previous version are migrated automatically.

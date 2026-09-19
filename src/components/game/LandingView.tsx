@@ -78,7 +78,9 @@ export function LandingView() {
         {status && !status.llm && (
           <p role="alert" className="mt-8 flex max-w-sm items-start gap-2 rounded-lg border border-destructive/40 bg-black/40 p-3 text-left text-xs text-destructive">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-            The narrator is offline: set GROQ_API_KEY in .env and restart the dev server.
+            {status.reachable
+              ? "The narrator is offline: GROQ_API_KEY is not set on the server."
+              : "The game server can't be reached, so the narrator is offline. Try again in a moment."}
           </p>
         )}
       </motion.div>

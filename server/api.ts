@@ -1,12 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Plugin } from "vite";
-import { readConfig, type ServerConfig } from "./config";
-import { IMAGE_KINDS, ImageError, cacheKey, cachedImage, generateImage, type ImageKind } from "./images";
-import { LlmError, TASKS, runTask, validateMessages, type TaskName } from "./llm";
+import { readConfig, type ServerConfig } from "./config.js";
+import { IMAGE_KINDS, ImageError, cacheKey, cachedImage, generateImage, type ImageKind } from "./images.js";
+import { LlmError, TASKS, runTask, validateMessages, type TaskName } from "./llm.js";
 
 type Next = (err?: unknown) => void;
 
-/** Sliding-window limiter keyed by client IP. In-memory: fine for one dev/preview process. */
+/** Sliding-window limiter keyed by client IP. In-memory, so per process / serverless instance. */
 function rateLimiter(limit: number, windowMs: number) {
   const hits = new Map<string, number[]>();
   return (ip: string): boolean => {
@@ -27,25 +27,48 @@ function sendJson(res: ServerResponse, status: number, body: unknown, headers: R
   res.end(JSON.stringify(body));
 }
 
-async function readBody(req: IncomingMessage, maxBytes = 200_000): Promise<string> {
+const MAX_BODY_BYTES = 200_000;
+
+async function readJson(req: IncomingMessage): Promise<unknown> {
+  // Vercel's Node helpers expose an already-parsed `req.body` (a getter that throws on bad JSON).
+  let preParsed: unknown;
+  try {
+    preParsed = (req as IncomingMessage & { body?: unknown }).body;
+  } catch {
+    throw new SyntaxError("invalid JSON");
+  }
+  if (preParsed !== undefined && preParsed !== null) {
+    if (typeof preParsed === "string" || Buffer.isBuffer(preParsed)) return JSON.parse(String(preParsed));
+    if (JSON.stringify(preParsed).length > MAX_BODY_BYTES) throw new LlmError("body too large", 413);
+    return preParsed;
+  }
   let size = 0;
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > maxBytes) throw new LlmError("body too large", 413);
+    if (size > MAX_BODY_BYTES) throw new LlmError("body too large", 413);
     chunks.push(chunk as Buffer);
   }
-  return Buffer.concat(chunks).toString("utf8");
+  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
+
+function clientIp(req: IncomingMessage): string {
+  const forwarded = req.headers["x-forwarded-for"];
+  const first = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim();
+  return first || req.socket.remoteAddress || "local";
+}
+
+/** Browsers flag requests made by other websites; those have no business spending our quotas. */
+const isCrossSite = (req: IncomingMessage) => req.headers["sec-fetch-site"] === "cross-site";
 
 async function handleLlm(cfg: ServerConfig, req: IncomingMessage, res: ServerResponse, ip: string) {
   if (req.method !== "POST") return sendJson(res, 405, { error: "POST only" });
   if (!allowLlm(ip)) return sendJson(res, 429, { error: "Too many requests" }, { "Retry-After": "20" });
   try {
-    const body = JSON.parse(await readBody(req));
+    const body = (await readJson(req)) as { task?: TaskName; messages?: unknown } | null;
     const task = body?.task as TaskName;
     if (!(task in TASKS)) return sendJson(res, 400, { error: "unknown task" });
-    const data = await runTask(cfg, task, validateMessages(body.messages));
+    const data = await runTask(cfg, task, validateMessages(body?.messages));
     sendJson(res, 200, { data });
   } catch (err) {
     if (err instanceof LlmError) {
@@ -71,7 +94,8 @@ async function handleImage(cfg: ServerConfig, url: URL, res: ServerResponse, ip:
       if (!allowImage(ip)) return sendJson(res, 429, { error: "Too many image requests" }, { "Retry-After": "60" });
       png = await generateImage(cfg, kind, subject, key);
     }
-    res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=31536000, immutable" });
+    // Same URL = same picture forever: let browsers and the CDN keep it (s-maxage).
+    res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "public, max-age=31536000, s-maxage=31536000, immutable" });
     res.end(png);
   } catch (err) {
     const status = err instanceof ImageError ? err.status : 500;
@@ -83,7 +107,8 @@ export function createApiMiddleware(cfg: ServerConfig) {
   return async (req: IncomingMessage, res: ServerResponse, next: Next) => {
     const url = new URL(req.url ?? "/", "http://localhost");
     if (!url.pathname.startsWith("/api/")) return next();
-    const ip = req.socket.remoteAddress ?? "local";
+    const ip = clientIp(req);
+    if (url.pathname !== "/api/status" && isCrossSite(req)) return sendJson(res, 403, { error: "cross-site requests are not allowed" });
     switch (url.pathname) {
       case "/api/status":
         return sendJson(res, 200, { llm: Boolean(cfg.groqApiKey), images: Boolean(cfg.hfToken) });
@@ -109,4 +134,13 @@ export function xianthiaApi(env: Record<string, string | undefined>, root: strin
       server.middlewares.use(createApiMiddleware(cfg));
     },
   };
+}
+
+/**
+ * Handler for serverless functions (Vercel `api/*.ts`): same routes, keys read from process.env.
+ * The config is read per request so newly added environment variables apply without a code change.
+ */
+export function serverlessHandler() {
+  return (req: IncomingMessage, res: ServerResponse) =>
+    createApiMiddleware(readConfig(process.env, process.cwd()))(req, res, () => sendJson(res, 404, { error: "not found" }));
 }

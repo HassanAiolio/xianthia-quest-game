@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LlmError, TASKS, runTask, validateMessages } from "./llm";
+import { LlmError, TASKS, runTask, validateMessages } from "./llm.js";
 
 const cfg = { groqApiKey: "test-key", imageCacheDir: "" };
 const ok = (content: object) =>

@@ -30,8 +30,9 @@ export const runAi: AiRunner = async (task, messages) => {
 export function describeAiError(err: unknown): string {
   if (err instanceof AiError) {
     if (err.status === 429) return `The Aether-Core is overloaded. Try again in ${err.retryAfter ?? 20}s.`;
-    if (err.status === 503) return "The Aether-Core is offline: GROQ_API_KEY is not set on the server (see README).";
-    if (err.status === 0) return "Connection to the Aether-Core lost. Is the dev server running?";
+    if (err.status === 503) return "The Aether-Core is offline: GROQ_API_KEY is not set on the server.";
+    if (err.status === 404) return "The Aether-Core can't be found: this deployment has no game server (/api).";
+    if (err.status === 0) return "Connection to the Aether-Core lost. Check your connection and try again.";
   }
   return "The Aether-Core's signal broke up. Try again.";
 }
