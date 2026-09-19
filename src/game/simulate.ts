@@ -1,9 +1,10 @@
 // Monte-Carlo fight simulator — used by balance tests (and handy when tuning numbers).
-import { classDef, type CharacterClass, type EnemyTier, type Item, type Player } from "@/types/game";
+import { classDef, type BossPhase, type CharacterClass, type Companion, type EnemyTier, type Item, type Player } from "@/types/game";
+import { signatureAbility } from "./abilities";
 import { resolveCombatRound } from "./combat";
 import { createEnemy } from "./enemies";
 import { STARTER_ITEMS } from "./items";
-import { ABILITY_MP_COST, IN_GAME_STAT_CAP, baseMaxHp, baseMaxMp } from "./stats";
+import { IN_GAME_STAT_CAP, baseMaxHp, baseMaxMp } from "./stats";
 import type { Rng } from "./dice";
 
 /** A typical build: creation points into the primary stat, every level-up point too. */
@@ -28,32 +29,37 @@ export interface FightStats {
   playerHitRate: number;
 }
 
-export function simulateFights(
-  player: Player,
-  tier: EnemyTier,
-  runs: number,
-  rng: Rng,
-  opts: { useAbility?: boolean; inventory?: Item[] } = {}
-): FightStats {
+export interface SimOptions {
+  /** Use the class signature whenever MP allows. */
+  useAbility?: boolean;
+  inventory?: Item[];
+  companion?: Companion | null;
+  bossPhase?: BossPhase;
+}
+
+export function simulateFights(player: Player, tier: EnemyTier, runs: number, rng: Rng, opts: SimOptions = {}): FightStats {
   const inventory = opts.inventory ?? STARTER_ITEMS;
+  const signature = signatureAbility(player.class);
   let wins = 0, rounds = 0, hpLost = 0, enemySwings = 0, enemyHits = 0, playerSwings = 0, playerHits = 0;
   for (let r = 0; r < runs; r++) {
     let p = { ...player };
-    let enemy = createEnemy({ name: "Sim", imageDescription: "sim", tier }, player.level, "sim");
+    let ally = opts.companion ? { ...opts.companion } : null;
+    let enemy = createEnemy({ name: "Sim", imageDescription: "sim", tier, phase2: opts.bossPhase }, player.level, "sim", { companion: Boolean(ally) });
     for (let n = 0; n < 60; n++) {
       rounds++;
-      const action = opts.useAbility && p.mp >= ABILITY_MP_COST ? { kind: "ability" as const } : { kind: "attack" as const };
-      const round = resolveCombatRound(p, inventory, enemy, action, rng);
+      const action = opts.useAbility && p.mp >= signature.mp ? { kind: "ability" as const } : { kind: "attack" as const };
+      const round = resolveCombatRound(p, inventory, enemy, action, rng, ally);
       if (round.playerAttack) {
         playerSwings++;
         if (round.playerAttack.hit) playerHits++;
       }
-      if (round.enemyAttack) {
+      if (round.enemyAttack && round.enemyAttack.victim === "player") {
         enemySwings++;
         if (round.enemyAttack.hit) enemyHits++;
       }
       p = { ...p, hp: p.hp + round.hpDelta, mp: p.mp + round.mpDelta };
-      enemy = { ...enemy, hp: round.enemyHpAfter };
+      if (ally) ally = { ...ally, hp: ally.hp + round.companionHpDelta, down: ally.down || round.companionDown };
+      enemy = round.enemyAfter;
       if (round.enemyDefeated) {
         wins++;
         hpLost += (player.hp - p.hp) / player.maxHp;

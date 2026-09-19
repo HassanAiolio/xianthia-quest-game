@@ -1,10 +1,12 @@
 import { useMemo } from "react";
+import { Map } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { GameImage } from "@/components/game/GameImage";
 import { useGameStore } from "@/hooks/useGameStore";
 import { sceneUrl } from "@/services/imageService";
 import { CHAPTERS, getChapter } from "@/game/story";
 
-export function SceneBanner() {
+export function SceneBanner({ onOpenAtlas }: { onOpenAtlas: () => void }) {
   const { state } = useGameStore();
   const location = state.currentLocation;
   const src = useMemo(() => sceneUrl(location), [location]);
@@ -19,6 +21,15 @@ export function SceneBanner() {
         <div className="absolute left-4 top-3 rounded-full border border-glass-border bg-black/40 px-2.5 py-0.5 text-[10px] uppercase tracking-[0.2em] text-muted-foreground backdrop-blur">
           {chapter ? `Chapter ${chapter.id}/${CHAPTERS.length} · ${chapter.title}` : "Epilogue · Free roam"}
         </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={onOpenAtlas}
+          className="absolute right-3 top-2.5 h-7 gap-1.5 border-glass-border bg-black/50 px-2.5 text-xs backdrop-blur hover:border-cyan/50 hover:text-cyan"
+        >
+          <Map className="h-3.5 w-3.5" /> Atlas
+          <span className="text-[10px] text-muted-foreground">{state.visited.length}</span>
+        </Button>
         <div className="absolute inset-x-0 bottom-0 p-4">
           <div className="text-[10px] uppercase tracking-[0.3em] text-cyan">Current location</div>
           <h1 className="font-display text-xl">{location.name}</h1>

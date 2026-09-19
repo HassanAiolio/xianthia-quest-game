@@ -1,4 +1,5 @@
-import { classDef, type Item, type Player } from "@/types/game";
+import type { Item, Player } from "@/types/game";
+import { unlockedAbilities } from "./abilities";
 import type { CombatAction } from "./combat";
 
 export type ExploreIntent = { kind: "rest" } | { kind: "use-item"; itemId: string } | { kind: "free" };
@@ -42,9 +43,11 @@ export function parseCombatInput(text: string, player: Player, inventory: Item[]
     const item = findItem(use[1], inventory, isConsumable);
     if (item) return { kind: "item", itemId: item.id };
   }
+  // Named abilities first, so "Ghost Step" or "Bulwark" aren't read as a plain dodge/defend.
+  const named = unlockedAbilities(player).find((a) => t.includes(a.name.toLowerCase()));
+  if (named) return { kind: "ability", abilityId: named.id };
   if (/\b(flee|run|escape|retreat|withdraw)\b/.test(t)) return { kind: "flee" };
   if (/\b(defend|block|parry|dodge|brace|guard|shield|take cover)\b/.test(t)) return { kind: "defend" };
-  const signature = classDef(player.class).signature.toLowerCase();
-  if (t.includes(signature) || /\b(ability|signature|special)\b/.test(t)) return { kind: "ability" };
+  if (/\b(ability|signature|special)\b/.test(t)) return { kind: "ability" };
   return { kind: "attack" };
 }

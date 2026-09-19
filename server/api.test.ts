@@ -6,7 +6,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApiMiddleware, serverlessHandler } from "./api.js";
 
-const cfg = { groqApiKey: "test-key", hfToken: undefined, imageCacheDir: "" };
+const cfg = { groqApiKey: "test-key", hfToken: undefined, imageCacheDir: "", ttsVoice: "troy" };
 
 function request(url: string, opts: { method?: string; body?: string; parsedBody?: unknown; headers?: Record<string, string> } = {}) {
   const req = Readable.from(opts.body ? [Buffer.from(opts.body)] : []) as unknown as IncomingMessage & { body?: unknown };
@@ -41,7 +41,7 @@ describe("API middleware", () => {
     const { res, out } = response();
     await createApiMiddleware(cfg)(request("/api/status"), res, () => {});
     expect(out.status).toBe(200);
-    expect(JSON.parse(out.body)).toEqual({ llm: true, images: false });
+    expect(JSON.parse(out.body)).toEqual({ llm: true, images: false, voice: true });
   });
 
   it("accepts a streamed JSON body (Vite dev / preview)", async () => {

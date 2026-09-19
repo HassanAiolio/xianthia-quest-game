@@ -26,8 +26,13 @@ describe("parseCombatInput", () => {
     expect(parseCombatInput("I slash at its knees", knight, STARTER_ITEMS)).toEqual({ kind: "attack" });
     expect(parseCombatInput("run for the exit!", knight, STARTER_ITEMS)).toEqual({ kind: "flee" });
     expect(parseCombatInput("raise my guard and parry", knight, STARTER_ITEMS)).toEqual({ kind: "defend" });
-    expect(parseCombatInput("use temporal cascade", mage, STARTER_ITEMS)).toEqual({ kind: "ability" });
-    expect(parseCombatInput("Voidstrike!", knight, STARTER_ITEMS)).toEqual({ kind: "ability" });
+    expect(parseCombatInput("use temporal cascade", mage, STARTER_ITEMS)).toEqual({ kind: "ability", abilityId: "temporal-cascade" });
+    expect(parseCombatInput("Voidstrike!", knight, STARTER_ITEMS)).toEqual({ kind: "ability", abilityId: "voidstrike" });
+    // Higher-level abilities by name, and only once unlocked.
+    const veteran = makePlayer({ level: 5 });
+    expect(parseCombatInput("I open a gravity well beneath it", veteran, STARTER_ITEMS)).toEqual({ kind: "ability", abilityId: "gravity-well" });
+    expect(parseCombatInput("I open a gravity well beneath it", knight, STARTER_ITEMS)).toEqual({ kind: "attack" });
+    expect(parseCombatInput("use my special", knight, STARTER_ITEMS)).toEqual({ kind: "ability" });
     expect(parseCombatInput("drink my neural stim", knight, STARTER_ITEMS)).toEqual({ kind: "item", itemId: "starter-stim" });
   });
 });

@@ -1,10 +1,30 @@
 import { Skull } from "lucide-react";
-import type { Enemy } from "@/types/game";
+import type { Enemy, EnemyEffects } from "@/types/game";
 import { GameImage } from "@/components/game/GameImage";
 import { VitalBar } from "@/components/game/VitalBar";
 import { TIERS } from "@/game/enemies";
 import { enemyUrl } from "@/services/imageService";
 import { cn } from "@/lib/utils";
+
+/** Slowed / poisoned / stunned chips, plus the boss's second phase. */
+function StatusChips({ effects, phase }: { effects?: EnemyEffects; phase?: 1 | 2 }) {
+  const chips = [
+    phase === 2 && { label: "Phase 2", tone: "text-[var(--gold)] border-[var(--gold)]/50" },
+    effects?.stunned && { label: "Frozen", tone: "text-cyan border-cyan/50" },
+    effects?.slowed && { label: `Slowed ${effects.slowed}`, tone: "text-cyan border-cyan/50" },
+    effects?.poison && { label: `Poisoned ${effects.poison.rounds}`, tone: "text-emerald-300 border-emerald-300/50" },
+  ].filter(Boolean) as { label: string; tone: string }[];
+  if (!chips.length) return null;
+  return (
+    <div className="flex flex-wrap gap-1">
+      {chips.map((c) => (
+        <span key={c.label} className={cn("rounded-full border px-1.5 py-0.5 text-[9px] uppercase tracking-wider", c.tone)}>
+          {c.label}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 /** Small-screen version, shown above the log so the foe stays in view (lg+ uses the full card). */
 export function EnemyStrip({ enemy }: { enemy: Enemy }) {
@@ -24,7 +44,10 @@ export function EnemyStrip({ enemy }: { enemy: Enemy }) {
           </span>
         </div>
         <div className="mt-1.5">
-          <VitalBar label="Enemy HP" value={enemy.hp} max={enemy.maxHp} variant="hp" />
+          <VitalBar label="Enemy HP" value={enemy.hp} max={enemy.maxHp} variant="hp" showChanges delay={0.65} />
+        </div>
+        <div className="mt-1.5">
+          <StatusChips effects={enemy.effects} phase={enemy.phase} />
         </div>
       </div>
     </section>
@@ -56,7 +79,10 @@ export function EnemyCard({ enemy }: { enemy: Enemy }) {
         <div className="scanlines pointer-events-none absolute inset-0 z-10 opacity-50" />
       </div>
       <h2 className="mb-3 text-center font-display text-xl text-destructive drop-shadow-md">{enemy.name}</h2>
-      <VitalBar label="Enemy HP" value={enemy.hp} max={enemy.maxHp} variant="hp" />
+      <VitalBar label="Enemy HP" value={enemy.hp} max={enemy.maxHp} variant="hp" showChanges delay={0.65} />
+      <div className="mt-2 flex justify-center">
+        <StatusChips effects={enemy.effects} phase={enemy.phase} />
+      </div>
       <div className="mt-2 text-center text-[10px] uppercase tracking-wider text-muted-foreground">Armor Class {enemy.ac}</div>
     </section>
   );

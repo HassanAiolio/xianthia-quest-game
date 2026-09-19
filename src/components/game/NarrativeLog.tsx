@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { AlertTriangle, Dices, Sparkles, WifiOff } from "lucide-react";
+import { AlertTriangle, Dices, Sparkles, Volume2, WifiOff } from "lucide-react";
+import { speak, stopVoice, useVoiceState } from "@/audio/voice";
+import { sound } from "@/audio/sound";
 import type { LogMessage } from "@/types/game";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +72,27 @@ function SystemLine({ m }: { m: LogMessage }) {
   );
 }
 
+/** Replay one line of narration with the narrator voice. */
+function ReadAloud({ text }: { text: string }) {
+  const voice = useVoiceState();
+  if (voice.problem) return null;
+  return (
+    <button
+      type="button"
+      aria-label="Read aloud"
+      title="Read aloud"
+      onClick={() => {
+        sound.unlock();
+        stopVoice();
+        speak(text, true);
+      }}
+      className="absolute right-1.5 top-1.5 rounded p-1 text-cyan/40 opacity-0 transition-opacity hover:text-cyan focus-visible:opacity-100 group-hover:opacity-100"
+    >
+      <Volume2 className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 export function NarrativeLog({ log, playerName, thinking }: { log: LogMessage[]; playerName: string; thinking: boolean }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -109,9 +132,10 @@ export function NarrativeLog({ log, playerName, thinking }: { log: LogMessage[];
                   "rounded-lg border px-3 py-2 text-sm leading-relaxed",
                   m.sender === "PLAYER" &&
                     "ml-10 border-[var(--gold)]/40 bg-[color-mix(in_oklch,var(--gold)_8%,transparent)] text-[oklch(0.95_0.08_88)]",
-                  m.sender === "AI" && "mr-10 border-cyan/30 bg-[color-mix(in_oklch,var(--cyan)_5%,transparent)] text-foreground"
+                  m.sender === "AI" && "group relative mr-10 border-cyan/30 bg-[color-mix(in_oklch,var(--cyan)_5%,transparent)] text-foreground"
                 )}
               >
+                {m.sender === "AI" && <ReadAloud text={m.text} />}
                 <div className={cn("mb-0.5 text-[10px] uppercase tracking-wider", m.sender === "PLAYER" ? "text-[var(--gold)]" : "text-cyan")}>
                   {m.sender === "PLAYER" ? playerName : "Aether-Core"}
                 </div>

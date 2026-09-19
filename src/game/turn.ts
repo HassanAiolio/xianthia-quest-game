@@ -1,4 +1,6 @@
-import { classDef, type Enemy, type GameSnapshot, type Item, type Location, type LogMessage, type LogTone, type Quest } from "@/types/game";
+import { classDef, type Companion, type Enemy, type GameSnapshot, type Item, type Location, type LogMessage, type LogTone, type Merchant, type Quest } from "@/types/game";
+import { abilitiesGained } from "./abilities";
+import { levelCompanion } from "./companions";
 import { clamp } from "./dice";
 import { INVENTORY_CAP, xpToNext } from "./stats";
 import { chapterQuest, getChapter, mainQuestId } from "./story";
@@ -30,6 +32,11 @@ export interface TurnResult {
   storyTurn?: boolean;
   /** The chapter boss fell: complete the main quest and open the next chapter. */
   chapterComplete?: boolean;
+  shardsDelta?: number;
+  /** undefined = unchanged, null = gone. */
+  companion?: Companion | null;
+  /** undefined = unchanged (cleared automatically when the player moves on), null = gone. */
+  merchant?: Merchant | null;
 }
 
 export function applyTurn(state: GameSnapshot, r: TurnResult): GameSnapshot {
@@ -79,6 +86,7 @@ export function applyTurn(state: GameSnapshot, r: TurnResult): GameSnapshot {
     }
   }
 
+  const levelBefore = player.level;
   if (!dead && r.xpGain) {
     player.xp += r.xpGain;
     const growth = classDef(player.class).growth;
@@ -102,8 +110,20 @@ export function applyTurn(state: GameSnapshot, r: TurnResult): GameSnapshot {
           "reward"
         )
       );
+      for (const a of abilitiesGained(player.class, levelBefore, player.level)) {
+        logs.push(note(`ab-${a.id}`, `New ability: ${a.name} (${a.mp} MP). ${a.text}`, "reward"));
+      }
     }
   }
+
+  let companion = r.companion !== undefined ? r.companion : state.companion;
+  if (companion && companion.level !== player.level) companion = levelCompanion(companion, player.level);
+
+  // Places for the atlas; merchants stay behind when the player moves on.
+  const location = r.location ?? state.currentLocation;
+  const moved = location.name !== state.currentLocation.name;
+  const visited = state.visited.some((p) => p.name === location.name) ? state.visited : [...state.visited, { ...location, chapter: state.chapter }];
+  const merchant = r.merchant !== undefined ? r.merchant : moved ? null : state.merchant;
 
   return {
     ...state,
@@ -113,7 +133,11 @@ export function applyTurn(state: GameSnapshot, r: TurnResult): GameSnapshot {
     chapter,
     turnsInChapter,
     currentEnemy: r.enemy === undefined ? state.currentEnemy : r.enemy,
-    currentLocation: r.location ?? state.currentLocation,
+    currentLocation: location,
+    visited,
+    merchant,
+    companion,
+    shards: Math.max(0, state.shards + (r.shardsDelta ?? 0)),
     suggestions: r.suggestions ?? state.suggestions,
     gameLog: [...state.gameLog, ...logs].slice(-MAX_LOG_ENTRIES),
     // Death wins over everything else the turn asked for.

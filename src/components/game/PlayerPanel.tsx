@@ -1,11 +1,15 @@
 import { useState } from "react";
-import { LogOut, Plus, Shield, Sparkles, User } from "lucide-react";
+import { Coins, LogOut, Plus, Shield, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AbilityList } from "@/components/game/AbilityList";
+import { CompanionCard } from "@/components/game/CompanionCard";
 import { VitalBar } from "@/components/game/VitalBar";
 import { GameImage } from "@/components/game/GameImage";
 import { useGameStore } from "@/hooks/useGameStore";
 import { classDef, type StatKey } from "@/types/game";
-import { ABILITY_MP_COST, IN_GAME_STAT_CAP, effectiveStats, playerAC, xpToNext } from "@/game/stats";
+import { IN_GAME_STAT_CAP, effectiveStats, playerAC, xpToNext } from "@/game/stats";
+import { checkBonus } from "@/game/checks";
+import { cn } from "@/lib/utils";
 
 const STAT_LABELS: Record<StatKey, string> = { str: "Strength", int: "Intellect", dex: "Dexterity", lck: "Luck" };
 
@@ -32,21 +36,38 @@ export function PlayerPanel() {
       </div>
 
       <div className="space-y-2.5">
-        <VitalBar label="HP" value={player.hp} max={player.maxHp} variant="hp" />
+        <VitalBar label="HP" value={player.hp} max={player.maxHp} variant="hp" showChanges delay={state.gameState === "COMBAT" ? 0.65 : 0} />
         <VitalBar label="MP" value={player.mp} max={player.maxMp} variant="mp" />
         <VitalBar label="XP" value={player.xp} max={xpToNext(player.level)} variant="xp" />
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="inline-flex items-center gap-1 uppercase tracking-wider text-muted-foreground">
+            <Coins className="h-3 w-3 text-[var(--gold)]" /> Shards
+          </span>
+          <span className="font-display text-sm text-[var(--gold)]">{state.shards}</span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2 text-center">
         {(["str", "int", "dex", "lck"] as const).map((s) => {
           const bonus = effective[s] - player.stats[s];
           const canSpend = player.statPoints > 0 && player.stats[s] < IN_GAME_STAT_CAP;
+          const check = checkBonus(player, state.inventory, s);
+          const proficient = cls.primary === s;
           return (
-            <div key={s} className="relative flex flex-col items-center justify-center rounded-lg border border-border bg-black/20 py-2" title={STAT_LABELS[s]}>
+            <div
+              key={s}
+              className="relative flex flex-col items-center justify-center rounded-lg border border-border bg-black/20 py-2"
+              title={`${STAT_LABELS[s]} — ability checks ${check >= 0 ? "+" : ""}${check}${proficient ? " (class specialty)" : ""}`}
+            >
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{s}</div>
               <div className="font-display text-lg text-foreground">
                 {effective[s]}
                 {bonus > 0 && <span className="ml-0.5 align-top text-[10px] text-cyan">+{bonus}</span>}
+              </div>
+              <div className={cn("text-[9px] tracking-wide", proficient ? "text-[var(--gold)]" : "text-muted-foreground")}>
+                check {check >= 0 ? "+" : ""}
+                {check}
+                {proficient && " ★"}
               </div>
               {canSpend && (
                 <button
@@ -73,15 +94,9 @@ export function PlayerPanel() {
         )}
       </div>
 
-      <div className="rounded-lg border border-cyan/20 bg-black/20 p-3">
-        <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-cyan">
-          <Sparkles className="h-3 w-3" /> Signature ability
-        </div>
-        <div className="mt-1 font-display text-sm text-foreground">
-          {cls.signature} <span className="text-[10px] text-muted-foreground">({ABILITY_MP_COST} MP)</span>
-        </div>
-        <p className="mt-1 text-[11px] leading-tight text-muted-foreground">{cls.signatureText} Use it from the combat bar.</p>
-      </div>
+      {state.companion && <CompanionCard companion={state.companion} />}
+
+      <AbilityList player={player} />
 
       <Button
         variant="ghost"

@@ -1,4 +1,4 @@
-import type { Enemy, GameSnapshot, GameState, Item, Location, LogMessage, Player, Quest } from "@/types/game";
+import type { Companion, Enemy, GameSnapshot, GameState, Item, Location, LogMessage, Merchant, Place, Player, Quest } from "@/types/game";
 import { makeId } from "./dice";
 import { createEnemy } from "./enemies";
 import { STARTER_ITEMS } from "./items";
@@ -29,6 +29,10 @@ export function newSnapshot(): GameSnapshot {
     chronicle: "",
     chronicleUpTo: "",
     suggestions: [],
+    shards: 0,
+    merchant: null,
+    companion: null,
+    visited: [{ ...DEFAULT_LOCATION, chapter: 1 }],
   };
 }
 
@@ -101,6 +105,11 @@ export function migrate(raw: unknown): GameSnapshot | null {
     chronicle: typeof raw.chronicle === "string" ? raw.chronicle : "",
     chronicleUpTo: typeof raw.chronicleUpTo === "string" ? raw.chronicleUpTo : "",
     suggestions: Array.isArray(raw.suggestions) ? raw.suggestions.filter((s: unknown) => typeof s === "string") : [],
+    // Added after v2 shipped: default them so older v2 saves keep working.
+    shards: Number(raw.shards) || 0,
+    merchant: isObj(raw.merchant) && Array.isArray(raw.merchant.stock) ? (raw.merchant as Merchant) : null,
+    companion: isObj(raw.companion) && typeof raw.companion.name === "string" ? (raw.companion as Companion) : null,
+    visited: Array.isArray(raw.visited) && raw.visited.length ? (raw.visited.filter(isObj) as Place[]) : base.visited,
   };
 }
 

@@ -1,4 +1,4 @@
-import type { Enemy, EnemyTier } from "@/types/game";
+import type { BossPhase, Enemy, EnemyTier } from "@/types/game";
 import { scaleReward } from "./stats";
 
 interface TierSpec {
@@ -23,12 +23,17 @@ export interface EnemySpec {
   name: string;
   imageDescription: string;
   tier: EnemyTier;
+  /** Bosses only: what they turn into below half HP. */
+  phase2?: BossPhase;
 }
 
+/** An ally at your side shortens fights, so foes come a little tougher. */
+const COMPANION_HP_BONUS = 1.25;
+
 /** The narrator only names the enemy; every combat number comes from here. */
-export function createEnemy(spec: EnemySpec, level: number, id: string): Enemy {
+export function createEnemy(spec: EnemySpec, level: number, id: string, opts: { companion?: boolean } = {}): Enemy {
   const t = TIERS[spec.tier];
-  const maxHp = Math.round((16 + 4 * level) * t.hp);
+  const maxHp = Math.round((16 + 4 * level) * t.hp * (opts.companion ? COMPANION_HP_BONUS : 1));
   return {
     id,
     name: spec.name,
@@ -42,5 +47,7 @@ export function createEnemy(spec: EnemySpec, level: number, id: string): Enemy {
     damageBonus: Math.max(1, Math.round((2 + level) * t.damage)),
     xpReward: scaleReward(t.xp, level),
     imageDescription: spec.imageDescription,
+    round: 0,
+    ...(spec.tier === "boss" && spec.phase2 ? { phase: 1 as const, bossPhase: spec.phase2 } : {}),
   };
 }

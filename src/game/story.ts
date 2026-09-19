@@ -1,4 +1,4 @@
-import type { Item, Quest } from "@/types/game";
+import type { BossPhase, Item, Quest } from "@/types/game";
 
 export interface Chapter {
   id: number;
@@ -9,7 +9,7 @@ export interface Chapter {
   guidance: string;
   /** Story turns before the boss may appear. */
   minTurns: number;
-  boss: { name: string; imageDescription: string };
+  boss: { name: string; imageDescription: string; phase2: BossPhase };
   reward: Omit<Item, "id">;
 }
 
@@ -27,6 +27,11 @@ export const CHAPTERS: Chapter[] = [
       name: "The Gatewarden",
       imageDescription:
         "towering sentinel of black glass with a cracked cyan halo and a great bronze bell in place of a head",
+      phase2: {
+        name: "The Bell Tolls",
+        description: "Its halo shatters and the bell-head begins to ring, each toll a shockwave through the glass.",
+        special: { name: "Tolling Shockwave", dice: 2, sides: 6 },
+      },
     },
     reward: {
       name: "Bell-Shard of the Gatewarden",
@@ -46,6 +51,11 @@ export const CHAPTERS: Chapter[] = [
     boss: {
       name: "The Choir of Static",
       imageDescription: "a swarm of broken holographic singers fused into one screaming shape of static and neon",
+      phase2: {
+        name: "Crescendo",
+        description: "The choir fuses into a single shrieking chord that tears at thought itself.",
+        special: { name: "Screaming Chorus", dice: 2, sides: 6, mpDrain: 6 },
+      },
     },
     reward: {
       name: "Sable's Memory Lens",
@@ -65,6 +75,11 @@ export const CHAPTERS: Chapter[] = [
     boss: {
       name: "The Hollow Regent",
       imageDescription: "a gaunt crowned figure made of stopped clock hands and hollow light, robes of frozen smoke",
+      phase2: {
+        name: "Unwound Time",
+        description: "The Regent tears open its own stopped heart and drinks the seconds it has hoarded.",
+        special: { name: "Stolen Moment", dice: 2, sides: 8, heal: 0.08 },
+      },
     },
     reward: {
       name: "Your True Name",

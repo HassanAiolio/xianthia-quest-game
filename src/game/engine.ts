@@ -1,12 +1,15 @@
-import type { GameSnapshot, Item, LogMessage, LogSender, LogTone, Player } from "@/types/game";
+import type { DiceRoll, GameSnapshot, Item, LogMessage, LogSender, LogTone, Player } from "@/types/game";
 import type { AiRunner } from "@/services/ai";
-import { describeRound, fallbackCombatNarrative, resolveCombatRound, type CombatAction } from "./combat";
+import { checkDice, describeCheck, rollCheck } from "./checks";
+import { ROLE_LABEL, createCompanion, restCompanion } from "./companions";
+import { generateStock, shardReward } from "./economy";
+import { describeRound, fallbackCombatNarrative, resolveCombatRound, roundDice, type CombatAction } from "./combat";
 import { clamp, makeId, type Rng } from "./dice";
 import { TIERS, createEnemy, type EnemySpec } from "./enemies";
 import { parseCombatInput, parseExploreInput } from "./intent";
 import { rollLoot } from "./items";
-import { buildCombatMessages, buildNarrateMessages } from "./prompts";
-import { sanitizeNarration } from "./sanitize";
+import { buildCombatMessages, buildNarrateMessages, checkOutcomeNote } from "./prompts";
+import { sanitizeCheck, sanitizeNarration } from "./sanitize";
 import { effectiveStats, scaleReward } from "./stats";
 import { bossId, climaxReady, getChapter } from "./story";
 import type { TurnResult } from "./turn";
@@ -36,8 +39,8 @@ class Turn {
   readonly timestamp = Date.now();
   readonly logs: LogMessage[] = [];
 
-  log(sender: LogSender, text: string, tone?: LogTone) {
-    this.logs.push({ id: makeId("log"), sender, text, tone, timestamp: this.timestamp });
+  log(sender: LogSender, text: string, tone?: LogTone, dice?: DiceRoll[]) {
+    this.logs.push({ id: makeId("log"), sender, text, tone, timestamp: this.timestamp, ...(dice?.length ? { dice } : {}) });
   }
 
   result(extra: Omit<TurnResult, "id" | "timestamp" | "logs"> = {}): TurnResult {
@@ -102,6 +105,7 @@ async function restTurn(state: GameSnapshot, player: Player, deps: EngineDeps, r
     note,
     forceEncounter: ambushed,
     forbidEncounter: !ambushed,
+    allowCheck: false,
     fallbackNarrative: ambushed
       ? "Your eyes have barely closed when something shifts in the dark."
       : "You find a quiet corner and let the hum of the glass lull you. For a while, nothing hunts you.",
@@ -109,6 +113,7 @@ async function restTurn(state: GameSnapshot, player: Player, deps: EngineDeps, r
   // Rest recovery is decided here, not by the narrator.
   result.hpDelta = hp;
   result.mpDelta = mp;
+  if (state.companion && result.companion === undefined) result.companion = restCompanion(state.companion);
   const recovered = `+${hp} HP, +${mp} MP`;
   result.logs.splice(1, 0, {
     id: makeId("log"),
@@ -126,6 +131,8 @@ interface NarrateOptions {
   forbidEncounter?: boolean;
   /** When set, a narrator failure falls back to this text instead of failing the turn. */
   fallbackNarrative?: string;
+  /** Resting is resolved by the engine: no ability checks there. */
+  allowCheck?: boolean;
 }
 
 async function narrateTurn(
@@ -137,6 +144,7 @@ async function narrateTurn(
 ): Promise<TurnResult> {
   const turn = new Turn();
   const ready = climaxReady(state.chapter, state.turnsInChapter);
+  const ctx = { player, inventory: state.inventory, quests: state.quests, climaxReady: ready };
 
   let raw: unknown;
   try {
@@ -145,11 +153,24 @@ async function narrateTurn(
     if (opts.fallbackNarrative === undefined) throw err;
     raw = { narrative: opts.fallbackNarrative };
   }
-  const n = sanitizeNarration(raw, { player, inventory: state.inventory, quests: state.quests, climaxReady: ready });
 
+  // The narrator asked for an ability check: show the attempt, roll, then ask for the outcome.
+  const check = opts.allowCheck === false ? null : sanitizeCheck(raw);
+  let checkXp = 0;
+  if (check) {
+    const setup = sanitizeNarration(raw, ctx).narrative;
+    const result = rollCheck(player, state.inventory, check, deps.rng ?? Math.random);
+    if (setup) turn.log("AI", setup);
+    turn.log("SYSTEM", describeCheck(result), "roll", [checkDice(result)]);
+    raw = await deps.ai("narrate", buildNarrateMessages(state, action, checkOutcomeNote(result, setup)));
+    checkXp = result.xp;
+  }
+
+  const n = sanitizeNarration(raw, ctx);
   turn.log("AI", n.narrative || opts.fallbackNarrative || "The glyphs pulse, patient. Nothing answers — yet.");
   const extra: Omit<TurnResult, "id" | "timestamp" | "logs"> = { storyTurn: true };
-  let xp = n.xpAward;
+  // On a check turn the check's own reward replaces the narrator's discovery XP (no double dipping).
+  let xp = check ? checkXp : n.xpAward;
 
   if (n.location) extra.location = n.location;
   if (n.hpDelta) {
@@ -187,14 +208,33 @@ async function narrateTurn(
   }
   if (xp) extra.xpGain = xp;
 
+  if (n.shardsFound) {
+    extra.shardsDelta = n.shardsFound;
+    turn.log("SYSTEM", `+${n.shardsFound} shards`, "reward");
+  }
+  const here = (n.location ?? state.currentLocation).name;
+  if (n.merchant && !(state.merchant && state.merchant.location === here)) {
+    extra.merchant = { ...n.merchant, location: here, stock: generateStock(player.level, player.class, deps.rng ?? Math.random) };
+    turn.log("SYSTEM", `${n.merchant.name} is willing to trade. Open the Trade tab.`, "info");
+  }
+  if (n.companionJoins && !state.companion) {
+    extra.companion = createCompanion(n.companionJoins, player.level, makeId("ally"));
+    turn.log("SYSTEM", `${n.companionJoins.name} joins you as your ${ROLE_LABEL[n.companionJoins.role].toLowerCase()}.`, "reward");
+  } else if (n.companionLeaves && state.companion) {
+    extra.companion = null;
+    turn.log("SYSTEM", `${state.companion.name} leaves your side.`, "info");
+  }
+
   let encounter = opts.forbidEncounter ? null : n.encounter;
   if (opts.forceEncounter && !encounter) encounter = FALLBACK_AMBUSHER;
   if (encounter) {
     const ch = getChapter(state.chapter);
+    const ally = extra.companion !== undefined ? extra.companion : state.companion;
+    const withAlly = { companion: Boolean(ally && !ally.down) };
     const enemy =
       encounter.tier === "boss" && ch
-        ? createEnemy({ ...ch.boss, tier: "boss" }, player.level, bossId(ch.id))
-        : createEnemy(encounter, player.level, makeId("enemy"));
+        ? createEnemy({ ...ch.boss, tier: "boss" }, player.level, bossId(ch.id), withAlly)
+        : createEnemy(encounter, player.level, makeId("enemy"), withAlly);
     turn.log("SYSTEM", `${TIERS[enemy.tier].label} encounter: ${enemy.name}`, "danger");
     extra.enemy = enemy;
     extra.mode = "COMBAT";
@@ -224,8 +264,8 @@ async function combatTurn(
           : { kind: "defend" }; // "rest" in the middle of a fight means bracing
   const intent = input.kind === "text" ? input.text : input.kind === "combat" ? input.text : undefined;
 
-  const round = resolveCombatRound(player, state.inventory, enemy, action, rng);
-  turn.log("SYSTEM", describeRound(round, enemy).join("\n"), "roll");
+  const round = resolveCombatRound(player, state.inventory, enemy, action, rng, state.companion);
+  turn.log("SYSTEM", describeRound(round, enemy).join("\n"), "roll", roundDice(round, enemy));
 
   let narrative = "";
   try {
@@ -238,10 +278,16 @@ async function combatTurn(
 
   const extra: Omit<TurnResult, "id" | "timestamp" | "logs"> = { hpDelta: round.hpDelta, mpDelta: round.mpDelta };
   if (round.item && action.kind === "item") extra.removeItemIds = [action.itemId];
+  const ally = state.companion;
+  if (ally && (round.companionHpDelta || round.companionDown)) {
+    extra.companion = { ...ally, hp: Math.max(0, ally.hp + round.companionHpDelta), down: ally.down || round.companionDown };
+  }
+  if (round.phaseChange) turn.log("SYSTEM", `${enemy.name} enters its second phase: ${round.phaseChange.name}`, "danger");
 
   if (round.enemyDefeated) {
-    Object.assign(extra, { enemy: null, mode: "PLAYING", storyTurn: true, xpGain: enemy.xpReward, suggestions: AFTER_VICTORY });
-    const rewards = [`+${enemy.xpReward} XP`];
+    const shards = shardReward(enemy, effectiveStats(player, state.inventory).lck, rng);
+    Object.assign(extra, { enemy: null, mode: "PLAYING", storyTurn: true, xpGain: enemy.xpReward, shardsDelta: shards, suggestions: AFTER_VICTORY });
+    const rewards = [`+${enemy.xpReward} XP`, `+${shards} shards`];
     const ch = getChapter(state.chapter);
     if (ch && enemy.id === bossId(ch.id)) {
       const relic: Item = { id: makeId("relic"), ...ch.reward };
@@ -261,7 +307,7 @@ async function combatTurn(
     Object.assign(extra, { enemy: null, mode: "PLAYING", storyTurn: true, suggestions: AFTER_ESCAPE });
     turn.log("SYSTEM", `You escaped from ${enemy.name}.`, "info");
   } else {
-    extra.enemy = { ...enemy, hp: round.enemyHpAfter };
+    extra.enemy = round.enemyAfter;
     extra.mode = "COMBAT";
   }
   return turn.result(extra);

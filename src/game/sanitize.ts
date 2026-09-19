@@ -1,7 +1,13 @@
-import type { EnemyTier, Item, ItemType, Location, Player, Quest, Stats, StatKey } from "@/types/game";
+import type { CompanionRole, EnemyTier, Item, ItemType, Location, Player, Quest, Stats, StatKey } from "@/types/game";
 import { clamp } from "./dice";
+import type { CheckRequest, Difficulty } from "./checks";
 import type { EnemySpec } from "./enemies";
-import { xpToNext } from "./stats";
+import { armorCap, statBudget, xpToNext } from "./stats";
+
+export { armorCap, statBudget };
+
+/** Most shards the narrator may hand out in one turn (a purse, a stash). */
+export const maxShardsFound = (level: number): number => 5 + 3 * level;
 
 /**
  * The narrator's reply is a set of *proposals*. Strict JSON mode guarantees the shape,
@@ -30,10 +36,15 @@ export interface Narration {
   itemsConsumed: string[];
   newQuest: { title: string; description: string } | null;
   completedQuestIds: string[];
+  shardsFound: number;
+  merchant: { name: string; description: string } | null;
+  companionJoins: { name: string; role: CompanionRole; description: string } | null;
+  companionLeaves: boolean;
 }
 
 const ITEM_TYPES: ItemType[] = ["weapon", "armor", "consumable", "artifact", "key"];
 const TIERS: EnemyTier[] = ["minion", "standard", "elite", "boss"];
+const ROLES: CompanionRole[] = ["fighter", "healer", "mystic"];
 const STAT_KEYS: StatKey[] = ["str", "int", "dex", "lck"];
 const MAX_ACTIVE_SIDE_QUESTS = 4;
 
@@ -43,9 +54,6 @@ const text = (v: unknown, max: number): string => (typeof v === "string" ? v.rep
 const int = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? Math.trunc(v) : 0);
 const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
-/** Total stat bonus a found item may carry: +1 early, +2 from level 4, +3 from level 8. */
-export const statBudget = (level: number): number => 1 + Math.floor(level / 4);
-export const armorCap = (level: number): number => 1 + Math.floor(level / 5);
 
 function sanitizeStatBonus(raw: unknown, budget: number): Partial<Stats> | undefined {
   if (!isObj(raw)) return undefined;
@@ -86,6 +94,18 @@ export function sanitizeItem(raw: unknown, player: Player): FoundItem | null {
   return item;
 }
 
+const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard", "extreme"];
+
+/** The narrator may ask for an ability check instead of deciding a risky outcome itself. */
+export function sanitizeCheck(raw: unknown): CheckRequest | null {
+  const c = isObj(raw) && isObj(raw.check) ? raw.check : null;
+  if (!c) return null;
+  const stat = STAT_KEYS.includes(c.stat as StatKey) ? (c.stat as StatKey) : null;
+  const difficulty = DIFFICULTIES.includes(c.difficulty as Difficulty) ? (c.difficulty as Difficulty) : "medium";
+  const attempt = text(c.attempt, 60);
+  return stat && attempt ? { stat, difficulty, attempt } : null;
+}
+
 export function sanitizeNarration(raw: unknown, ctx: NarrationContext): Narration {
   const r: Raw = isObj(raw) ? raw : {};
   const { player, inventory, quests } = ctx;
@@ -124,6 +144,18 @@ export function sanitizeNarration(raw: unknown, ctx: NarrationContext): Narratio
 
   const firstItem = list(r.itemsFound).map((i) => sanitizeItem(i, player)).find(Boolean) ?? null;
 
+  let merchant: Narration["merchant"] = null;
+  if (isObj(r.merchant)) {
+    const name = text(r.merchant.name, 40);
+    if (name) merchant = { name, description: text(r.merchant.description, 160) };
+  }
+  let companionJoins: Narration["companionJoins"] = null;
+  if (isObj(r.companionJoins)) {
+    const name = text(r.companionJoins.name, 32);
+    const role = ROLES.includes(r.companionJoins.role as CompanionRole) ? (r.companionJoins.role as CompanionRole) : "fighter";
+    if (name) companionJoins = { name, role, description: text(r.companionJoins.description, 160) || "A new ally." };
+  }
+
   return {
     narrative: text(r.narrative, 2000),
     suggestions,
@@ -145,5 +177,9 @@ export function sanitizeNarration(raw: unknown, ctx: NarrationContext): Narratio
       .map((id) => text(id, 80))
       .filter((id) => activeSide.some((q) => q.id === id))
       .slice(0, 1),
+    shardsFound: clamp(int(r.shardsFound), 0, maxShardsFound(player.level)),
+    merchant,
+    companionJoins,
+    companionLeaves: r.companionLeaves === true,
   };
 }

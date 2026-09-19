@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LlmError, TASKS, runTask, validateMessages } from "./llm.js";
 
-const cfg = { groqApiKey: "test-key", imageCacheDir: "" };
+const cfg = { groqApiKey: "test-key", imageCacheDir: "", ttsVoice: "troy" };
 const ok = (content: object) =>
   new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(content) } }], usage: {} }), { status: 200 });
 const limited = () => new Response("{}", { status: 429, headers: { "retry-after": "7" } });
@@ -23,7 +23,7 @@ describe("runTask", () => {
   });
 
   it("never sends a request without a key", async () => {
-    await expect(runTask({ imageCacheDir: "" }, "narrate", [{ role: "user", content: "x" }])).rejects.toBeInstanceOf(LlmError);
+    await expect(runTask({ imageCacheDir: "", ttsVoice: "troy" }, "narrate", [{ role: "user", content: "x" }])).rejects.toBeInstanceOf(LlmError);
   });
 });
 

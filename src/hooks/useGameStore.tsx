@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from "react";
 import type { GameSnapshot, GameState, LogMessage, Player, StatKey } from "@/types/game";
+import { makeId } from "@/game/dice";
+import { buyFromMerchant, sellToMerchant } from "@/game/economy";
 import { toggleEquip } from "@/game/items";
 import { loadSnapshot, newSnapshot, resumeState, saveSnapshot } from "@/game/save";
 import { IN_GAME_STAT_CAP } from "@/game/stats";
@@ -15,6 +17,9 @@ type Action =
   | { type: "SPEND_STAT_POINT"; stat: StatKey }
   | { type: "TOGGLE_EQUIP"; itemId: string }
   | { type: "UPDATE_CHRONICLE"; text: string; upTo: string }
+  | { type: "BUY"; index: number; id: string; at: number }
+  | { type: "SELL"; itemId: string; id: string; at: number }
+  | { type: "DISMISS_COMPANION"; at: number }
   | { type: "RESET" };
 
 export function gameReducer(state: GameSnapshot, action: Action): GameSnapshot {
@@ -58,6 +63,16 @@ export function gameReducer(state: GameSnapshot, action: Action): GameSnapshot {
       // Ignore late replies that belong to a previous run.
       if (!state.gameLog.some((m) => m.id === action.upTo)) return state;
       return { ...state, chronicle: action.text, chronicleUpTo: action.upTo };
+    case "BUY":
+      return buyFromMerchant(state, action.index, { id: action.id, at: action.at });
+    case "SELL":
+      return sellToMerchant(state, action.itemId, { id: action.id, at: action.at });
+    case "DISMISS_COMPANION": {
+      const ally = state.companion;
+      if (!ally || state.gameState === "COMBAT") return state;
+      const note = { id: `part-${ally.id}`, sender: "SYSTEM" as const, text: `${ally.name} parts ways with you.`, tone: "info" as const, timestamp: action.at };
+      return { ...state, companion: null, gameLog: [...state.gameLog, note] };
+    }
     case "RESET":
       return newSnapshot();
     default:
@@ -76,6 +91,9 @@ interface GameContextValue {
   spendStatPoint: (stat: StatKey) => void;
   toggleEquip: (itemId: string) => void;
   updateChronicle: (text: string, upTo: string) => void;
+  buy: (index: number) => void;
+  sell: (itemId: string) => void;
+  dismissCompanion: () => void;
   reset: () => void;
 }
 
@@ -98,6 +116,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       spendStatPoint: (stat: StatKey) => dispatch({ type: "SPEND_STAT_POINT", stat }),
       toggleEquip: (itemId: string) => dispatch({ type: "TOGGLE_EQUIP", itemId }),
       updateChronicle: (text: string, upTo: string) => dispatch({ type: "UPDATE_CHRONICLE", text, upTo }),
+      buy: (index: number) => dispatch({ type: "BUY", index, id: makeId("item"), at: Date.now() }),
+      sell: (itemId: string) => dispatch({ type: "SELL", itemId, id: makeId("sale"), at: Date.now() }),
+      dismissCompanion: () => dispatch({ type: "DISMISS_COMPANION", at: Date.now() }),
       reset: () => dispatch({ type: "RESET" }),
     }),
     []

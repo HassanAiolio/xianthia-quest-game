@@ -3,10 +3,10 @@ import { FlaskConical, Footprints, Moon, Send, Shield, Sparkles, Sword, Wand2 } 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useGameStore } from "@/hooks/useGameStore";
-import { classDef } from "@/types/game";
+import { unlockedAbilities } from "@/game/abilities";
 import type { CombatAction } from "@/game/combat";
 import type { TurnInput } from "@/game/engine";
-import { ABILITY_MP_COST } from "@/game/stats";
+
 import { cn } from "@/lib/utils";
 
 const DEFAULT_SUGGESTIONS = ["Look around", "Search the area", "Move on carefully"];
@@ -24,11 +24,13 @@ export function CommandBar({ busy, onPlay }: CommandBarProps) {
   const { state } = useGameStore();
   const [text, setText] = useState("");
   const [itemsOpen, setItemsOpen] = useState(false);
+  const [abilitiesOpen, setAbilitiesOpen] = useState(false);
   const player = state.player!;
   const inCombat = state.gameState === "COMBAT" && state.currentEnemy !== null;
   const disabled = busy || state.gameState === "GAMEOVER";
   const consumables = state.inventory.filter((i) => i.type === "consumable");
-  const signature = classDef(player.class).signature;
+  const abilities = unlockedAbilities(player);
+  const cheapest = Math.min(...abilities.map((a) => a.mp));
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -43,6 +45,7 @@ export function CommandBar({ busy, onPlay }: CommandBarProps) {
     const flavour = text.trim();
     setText("");
     setItemsOpen(false);
+    setAbilitiesOpen(false);
     void onPlay({ kind: "combat", action, text: flavour || undefined }, flavour || label).then(
       (ok) => !ok && flavour && setText((cur) => cur || flavour)
     );
@@ -61,12 +64,18 @@ export function CommandBar({ busy, onPlay }: CommandBarProps) {
             <Button
               variant="outline"
               size="sm"
-              disabled={disabled || player.mp < ABILITY_MP_COST}
-              title={player.mp < ABILITY_MP_COST ? `Needs ${ABILITY_MP_COST} MP` : undefined}
-              onClick={() => combat({ kind: "ability" }, `${signature}!`)}
+              disabled={disabled || player.mp < cheapest}
+              aria-expanded={abilitiesOpen}
+              title={player.mp < cheapest ? `Needs ${cheapest} MP` : undefined}
+              onClick={() =>
+                abilities.length === 1
+                  ? combat({ kind: "ability", abilityId: abilities[0].id }, `${abilities[0].name}!`)
+                  : setAbilitiesOpen((o) => !o)
+              }
               className={cn(chip, "border-[var(--gold)]/40 text-[var(--gold)]")}
             >
-              <Sparkles /> {signature} <span className="text-[10px] opacity-70">{ABILITY_MP_COST} MP</span>
+              <Sparkles /> {abilities.length === 1 ? abilities[0].name : `Abilities (${abilities.length})`}
+              <span className="text-[10px] opacity-70">{abilities.length === 1 ? `${abilities[0].mp} MP` : ""}</span>
             </Button>
             <Button variant="outline" size="sm" disabled={disabled} onClick={() => combat({ kind: "defend" }, "Defend.")} className={chip}>
               <Shield /> Defend
@@ -85,6 +94,23 @@ export function CommandBar({ busy, onPlay }: CommandBarProps) {
               <Footprints /> Flee
             </Button>
           </div>
+          {abilitiesOpen && abilities.length > 1 && (
+            <div className="flex flex-wrap gap-2 rounded-lg border border-[var(--gold)]/30 bg-black/30 p-2" role="group" aria-label="Abilities">
+              {abilities.map((a) => (
+                <Button
+                  key={a.id}
+                  variant="outline"
+                  size="sm"
+                  disabled={disabled || player.mp < a.mp}
+                  title={player.mp < a.mp ? `Needs ${a.mp} MP` : a.text}
+                  onClick={() => combat({ kind: "ability", abilityId: a.id }, `${a.name}!`)}
+                  className={cn(chip, "border-[var(--gold)]/40 text-[var(--gold)]")}
+                >
+                  <Sparkles /> {a.name} <span className="text-[10px] opacity-70">{a.mp} MP</span>
+                </Button>
+              ))}
+            </div>
+          )}
           {itemsOpen && consumables.length > 0 && (
             <div className="flex flex-wrap gap-2 rounded-lg border border-glass-border bg-black/30 p-2" role="group" aria-label="Consumables">
               {consumables.map((item) => (

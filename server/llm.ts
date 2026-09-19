@@ -45,6 +45,19 @@ const NARRATE_SCHEMA = obj({
   itemsConsumed: { type: "array", items: str },
   newQuest: nullable(obj({ title: str, description: str })),
   completedQuestIds: { type: "array", items: str },
+  check: nullable(
+    obj({
+      stat: { type: "string", enum: ["str", "int", "dex", "lck"] },
+      difficulty: { type: "string", enum: ["easy", "medium", "hard", "extreme"] },
+      attempt: str,
+    })
+  ),
+  shardsFound: int,
+  merchant: nullable(obj({ name: str, description: str })),
+  companionJoins: nullable(
+    obj({ name: str, role: { type: "string", enum: ["fighter", "healer", "mystic"] }, description: str })
+  ),
+  companionLeaves: { type: "boolean" },
 });
 
 const COMBAT_SCHEMA = obj({ narrative: str });

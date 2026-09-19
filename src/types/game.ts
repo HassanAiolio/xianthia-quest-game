@@ -29,6 +29,17 @@ export interface Player {
 
 export type EnemyTier = "minion" | "standard" | "elite" | "boss";
 
+/** Lingering effects the player's abilities put on an enemy. */
+export interface EnemyEffects {
+  /** Rounds left attacking at disadvantage. */
+  slowed?: number;
+  poison?: { rounds: number; damage: number };
+  /** Skips its next action. */
+  stunned?: boolean;
+  /** Stasis-type stuns work once per fight. */
+  stunUsed?: boolean;
+}
+
 export interface Enemy {
   id: string;
   name: string;
@@ -43,6 +54,62 @@ export interface Enemy {
   damageBonus: number;
   xpReward: number;
   imageDescription: string;
+  effects?: EnemyEffects;
+  /** Rounds fought so far (drives boss special attacks). */
+  round?: number;
+  /** Bosses turn to phase 2 below half HP. */
+  phase?: 1 | 2;
+  bossPhase?: BossPhase;
+}
+
+/** What a boss becomes below half HP: stronger, with a special attack every other round. */
+export interface BossPhase {
+  name: string;
+  description: string;
+  special: {
+    name: string;
+    /** Damage: {dice}d{sides} + boss level. Halved if the player defends. */
+    dice: number;
+    sides: number;
+    mpDrain?: number;
+    /** Share of max HP the boss regains when it uses the special. */
+    heal?: number;
+  };
+}
+
+export type CompanionRole = "fighter" | "healer" | "mystic";
+
+export interface Companion {
+  id: string;
+  name: string;
+  role: CompanionRole;
+  description: string;
+  level: number;
+  hp: number;
+  maxHp: number;
+  /** Knocked out: no actions until the player rests. */
+  down: boolean;
+}
+
+export interface ShopItem {
+  item: Item;
+  price: number;
+}
+
+export interface Merchant {
+  name: string;
+  description: string;
+  /** The location they trade at; walking away ends the deal. */
+  location: string;
+  stock: ShopItem[];
+}
+
+/** A place the player has been, for the atlas. */
+export interface Place {
+  name: string;
+  description: string;
+  imageDescription: string;
+  chapter: number;
 }
 
 export type ItemType = "weapon" | "armor" | "consumable" | "artifact" | "key";
@@ -64,12 +131,25 @@ export type LogSender = "SYSTEM" | "AI" | "PLAYER";
 /** Visual flavour for SYSTEM lines. "error" = out-of-game problem, never shown to the AI. */
 export type LogTone = "info" | "roll" | "reward" | "danger" | "error";
 
+/** One visible d20 roll, carried by "roll" log lines so the UI can animate it. */
+export interface DiceRoll {
+  who: "player" | "enemy" | "ally";
+  kind: "attack" | "check" | "escape";
+  label: string;
+  natural: number;
+  bonus: number;
+  /** AC or DC the total was compared to. */
+  target: number;
+  outcome: "success" | "failure" | "critical" | "fumble";
+}
+
 export interface LogMessage {
   id: string;
   sender: LogSender;
   text: string;
   timestamp: number;
   tone?: LogTone;
+  dice?: DiceRoll[];
 }
 
 export interface Location {
@@ -106,6 +186,11 @@ export interface GameSnapshot {
   chronicleUpTo: string;
   /** Next-action ideas proposed by the narrator. */
   suggestions: string[];
+  /** Aether shards: the currency. */
+  shards: number;
+  merchant: Merchant | null;
+  companion: Companion | null;
+  visited: Place[];
 }
 
 export interface ClassDefinition {

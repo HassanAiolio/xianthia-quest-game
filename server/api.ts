@@ -3,6 +3,7 @@ import type { Plugin } from "vite";
 import { readConfig, type ServerConfig } from "./config.js";
 import { IMAGE_KINDS, ImageError, cacheKey, cachedImage, generateImage, type ImageKind } from "./images.js";
 import { LlmError, TASKS, runTask, validateMessages, type TaskName } from "./llm.js";
+import { TtsError, synthesize } from "./tts.js";
 
 type Next = (err?: unknown) => void;
 
@@ -21,6 +22,7 @@ function rateLimiter(limit: number, windowMs: number) {
 
 const allowLlm = rateLimiter(40, 60_000);
 const allowImage = rateLimiter(25, 10 * 60_000);
+const allowTts = rateLimiter(30, 10 * 60_000);
 
 function sendJson(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
   res.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers });
@@ -81,6 +83,23 @@ async function handleLlm(cfg: ServerConfig, req: IncomingMessage, res: ServerRes
   }
 }
 
+async function handleTts(cfg: ServerConfig, req: IncomingMessage, res: ServerResponse, ip: string) {
+  if (req.method !== "POST") return sendJson(res, 405, { error: "POST only" });
+  if (!allowTts(ip)) return sendJson(res, 429, { error: "Too many voice requests" }, { "Retry-After": "60" });
+  try {
+    const body = (await readJson(req)) as { text?: unknown } | null;
+    const text = typeof body?.text === "string" ? body.text : "";
+    const wav = await synthesize(cfg, text);
+    res.writeHead(200, { "Content-Type": "audio/wav", "Cache-Control": "no-store" });
+    res.end(wav);
+  } catch (err) {
+    if (err instanceof TtsError) return sendJson(res, err.status, { error: err.message, code: err.code });
+    if (err instanceof SyntaxError) return sendJson(res, 400, { error: "invalid JSON" });
+    console.error("[api] tts", err);
+    sendJson(res, 500, { error: "internal error" });
+  }
+}
+
 async function handleImage(cfg: ServerConfig, url: URL, res: ServerResponse, ip: string) {
   const kind = url.searchParams.get("kind") as ImageKind;
   const subject = (url.searchParams.get("subject") ?? "").trim().slice(0, 300);
@@ -111,11 +130,13 @@ export function createApiMiddleware(cfg: ServerConfig) {
     if (url.pathname !== "/api/status" && isCrossSite(req)) return sendJson(res, 403, { error: "cross-site requests are not allowed" });
     switch (url.pathname) {
       case "/api/status":
-        return sendJson(res, 200, { llm: Boolean(cfg.groqApiKey), images: Boolean(cfg.hfToken) });
+        return sendJson(res, 200, { llm: Boolean(cfg.groqApiKey), images: Boolean(cfg.hfToken), voice: Boolean(cfg.groqApiKey) });
       case "/api/llm":
         return handleLlm(cfg, req, res, ip);
       case "/api/image":
         return handleImage(cfg, url, res, ip);
+      case "/api/tts":
+        return handleTts(cfg, req, res, ip);
       default:
         return sendJson(res, 404, { error: "not found" });
     }

@@ -52,6 +52,10 @@ export function playerAttackBonus(player: Player, inventory: Item[]): number {
   return proficiency(player.level) + mod(primaryStat(player, inventory));
 }
 
+/** Total stat bonus a found or bought item may carry: +1 early, +2 from level 4, +3 from level 8. */
+export const statBudget = (level: number): number => 1 + Math.floor(level / 4);
+export const armorCap = (level: number): number => 1 + Math.floor(level / 5);
+
 /** Only one item per slot can be equipped; consumables and keys are never equipped. */
 export const isEquippable = (item: Item): boolean =>
   item.type === "weapon" || item.type === "armor" || item.type === "artifact";

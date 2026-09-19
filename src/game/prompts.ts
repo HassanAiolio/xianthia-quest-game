@@ -1,4 +1,5 @@
 import { classDef, type Enemy, type GameSnapshot, type LogMessage } from "@/types/game";
+import { checkVerdict, type CheckResult } from "./checks";
 import type { CombatRound } from "./combat";
 import { describeRound } from "./combat";
 import { TIERS } from "./enemies";
@@ -32,10 +33,21 @@ MECHANICAL FIELDS (the game engine applies and limits them)
 - itemsConsumed: inventory IDs used up by the story (a key turned in a lock, an offering given). Healing consumables are used through the engine; never consume them here.
 - newQuest: when someone or something gives the player a clear side objective; otherwise null.
 - completedQuestIds: IDs of active side quests the player has just clearly completed.
-- suggestions: exactly 3 distinct next actions for this scene, 2–6 words each, imperative ("Question the blind archivist").`;
+- suggestions: exactly 3 distinct next actions for this scene, 2–6 words each, imperative ("Question the blind archivist").
+- shardsFound: aether shards (the currency) the player actually picks up — a purse, a cache, coins in a till, a reward someone pays. Usually 0; 3–15 when it happens.
+
+TRADE, ALLIES AND MONEY — these three fields must match what your own narrative just showed. Read your narrative back and ask:
+- Did someone offer goods for sale, name a price, or invite a trade? → set merchant: { name, description }. A vendor saying "memories for a price" IS a merchant. You only name and describe them; the engine decides the stock and the prices, and the player buys from the trade panel. Leave it null only if a merchant is already listed above, or nobody is selling anything.
+- Did someone agree to travel with the player, watch their back or fight at their side? → set companionJoins: { name, role, description }, role = fighter, healer or mystic. Talking a reluctant one round is an ability check first: set the field on the turn they actually say yes. Leave it null if the player already has a companion or nobody agreed.
+- Did the current companion walk away, die or get dismissed? → companionLeaves: true. Otherwise false.
+
+ABILITY CHECKS (the dice decide, not you)
+- When an action's outcome is genuinely uncertain AND failing would matter — climbing, forcing, sneaking, dodging a trap, persuading, deceiving, deciphering, hacking, gambling — do not decide it. Set check instead: stat (str = force and athletics, dex = stealth, agility and precision, int = knowledge, tech, magic and perception, lck = pure chance), difficulty (easy, medium, hard, extreme) and attempt (3–6 words, e.g. "scale the shattered spire").
+- With a check, the narrative describes only the attempt beginning (1–2 sentences, no outcome) and every other mechanical field stays empty, null or 0.
+- No checks for safe, trivial or purely conversational actions, and never a check when the engine note says one was just resolved. Otherwise check is null.`;
 
 const COMBAT_SYSTEM = `You are the Aether-Core, narrator of Xianthia (dark cyberpunk-fantasy). Narrate ONE round of combat in 2–3 vivid sentences, at most 70 words, second person, present tense.
-The round's dice results are final: hits are hits and misses are misses. Never state numbers, hit points, damage values, dice or armor class — convey them through description ("staggering", "barely standing"). Do not add new effects, new enemies or outcomes. Weave in the player's stated intent when there is one, but never let it override the results. If the enemy is defeated, describe its end. If the player escaped, describe the escape.`;
+The round's dice results are final: hits are hits and misses are misses. Never state numbers, hit points, damage values, dice or armor class — convey them through description ("staggering", "barely standing"). Do not add new effects, new enemies or outcomes. Weave in the player's stated intent when there is one, but never let it override the results. If the enemy is defeated, describe its end. If the player escaped, describe the escape. If a companion acts, give them a moment in the sentence. If the results announce PHASE 2, make the enemy's transformation the centre of the round.`;
 
 const CHRONICLE_SYSTEM = `You keep the chronicle of a text RPG: the compact long-term memory the narrator reads every turn.
 Merge the previous chronicle with the new events into an updated chronicle.
@@ -44,6 +56,18 @@ Drop: combat blow-by-blow, dice, ambient description.
 Past tense, third person, at most 180 words, as short lines under these headings: Story, People, Places, Open threads.`;
 
 const truncate = (s: string, max: number) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
+
+/** Engine note for the second narrator call: the check already happened, tell its consequences. */
+export function checkOutcomeNote(r: CheckResult, setup: string): string {
+  const stakes = r.success
+    ? r.critical
+      ? "It went better than hoped: give a clear, memorable payoff (progress, a secret, an item or an ally)."
+      : "It works: give real progress — access, information, advantage or a find."
+    : r.critical
+      ? "It goes badly wrong: a real cost (a hazard hpDelta, an alerted enemy or encounter, something lost) — but keep the story moving."
+      : "It fails: a setback or cost (a small hazard hpDelta, noise that draws attention, a missed chance) — but keep the story moving.";
+  return `ABILITY CHECK RESOLVED — the player's attempt to ${r.attempt} was a ${checkVerdict(r)}. ${stakes} You already narrated the attempt beginning ("${truncate(setup, 300)}"); continue straight from there without repeating it. check must be null.`;
+}
 
 function formatEntry(m: LogMessage): string {
   const who = m.sender === "PLAYER" ? "PLAYER" : m.sender === "AI" ? "NARRATOR" : "EVENT";
@@ -89,10 +113,17 @@ export function buildNarrateMessages(state: GameSnapshot, action: string, engine
     ? quests.map((q) => `- [${q.id}] ${q.title}${q.main ? " (main story)" : ""}: ${q.description}`).join("\n")
     : "- (none)";
   const recent = recentEntries(state).map(formatEntry).join("\n") || "(nothing yet)";
+  const ally = state.companion;
+  const companionLine = ally
+    ? `COMPANION: ${ally.name} (${ally.role}${ally.down ? ", knocked out until the player rests" : ""}) — ${ally.description}. Give them a voice and reactions now and then.`
+    : "COMPANION: none";
+  const merchantLine = state.merchant ? `\nMERCHANT HERE: ${state.merchant.name} — ${state.merchant.description} (trading happens in the trade panel).` : "";
 
   const user = `${chapterBlock(state)}
 
 PLAYER: ${p.name}, level ${p.level} ${p.class} (${cls.tagline}). HP ${p.hp}/${p.maxHp}, MP ${p.mp}/${p.maxMp}. STR ${s.str}, INT ${s.int}, DEX ${s.dex}, LCK ${s.lck}.${p.appearance ? `\nAppearance: ${p.appearance}` : ""}
+SHARDS: ${state.shards}
+${companionLine}${merchantLine}
 INVENTORY:
 ${inventory}
 ACTIVE QUESTS:
