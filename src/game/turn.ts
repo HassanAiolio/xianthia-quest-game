@@ -1,4 +1,4 @@
-import { classDef, type Companion, type Enemy, type GameSnapshot, type Item, type Location, type LogMessage, type LogTone, type Merchant, type Quest } from "@/types/game";
+import { classDef, type Companion, type Enemy, type GameSnapshot, type Item, type Location, type LogMessage, type LogTone, type Merchant, type PendingCheck, type Quest } from "@/types/game";
 import { abilitiesGained } from "./abilities";
 import { levelCompanion } from "./companions";
 import { clamp } from "./dice";
@@ -37,6 +37,8 @@ export interface TurnResult {
   companion?: Companion | null;
   /** undefined = unchanged (cleared automatically when the player moves on), null = gone. */
   merchant?: Merchant | null;
+  /** undefined = unchanged, null = the die has been rolled. */
+  pendingCheck?: PendingCheck | null;
 }
 
 export function applyTurn(state: GameSnapshot, r: TurnResult): GameSnapshot {
@@ -137,6 +139,7 @@ export function applyTurn(state: GameSnapshot, r: TurnResult): GameSnapshot {
     visited,
     merchant,
     companion,
+    pendingCheck: r.pendingCheck === undefined ? state.pendingCheck : r.pendingCheck,
     shards: Math.max(0, state.shards + (r.shardsDelta ?? 0)),
     suggestions: r.suggestions ?? state.suggestions,
     gameLog: [...state.gameLog, ...logs].slice(-MAX_LOG_ENTRIES),

@@ -10,9 +10,10 @@ const HF_MODEL = "black-forest-labs/FLUX.1-schnell";
 
 export const IMAGE_KINDS = {
   portrait: {
-    size: "512x512",
+    // 3:4 and framed head to boots, so the character panel shows the whole hero.
+    size: "768x1024",
     prompt: (s: string) =>
-      `pixel art 16-bit RPG character portrait, bust shot, ${s}, dark cyberpunk fantasy background, dramatic rim lighting, detailed face`,
+      `pixel art 16-bit RPG character sprite, full body from head to boots, standing hero pose, entire figure inside the frame, ${s}, dark cyberpunk fantasy background, dramatic rim lighting`,
   },
   enemy: {
     size: "512x512",

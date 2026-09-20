@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import { BookOpen, Coins, Crown, Package, Scroll } from "lucide-react";
+import { BookOpen, Coins, Crown, Package, Scroll, Sparkles } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EnemyCard } from "@/components/game/EnemyCard";
+import { AbilityList } from "@/components/game/AbilityList";
 import { InventoryPanel } from "@/components/game/InventoryPanel";
 import { TradePanel } from "@/components/game/TradePanel";
 import { useGameStore } from "@/hooks/useGameStore";
@@ -49,19 +50,22 @@ export function DataPad({ busy, onUseItem }: { busy: boolean; onUseItem: (item: 
       {state.gameState === "COMBAT" && state.currentEnemy && <EnemyCard enemy={state.currentEnemy} />}
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
-        <TabsList className={cn("grid w-full shrink-0 bg-black/30", trading ? "grid-cols-4" : "grid-cols-3")}>
-          <TabsTrigger value="inventory" className="px-1 text-xs data-[state=active]:bg-[color-mix(in_oklch,var(--gold)_15%,transparent)] data-[state=active]:text-[var(--gold)]">
-            <Package className="mr-1 h-3.5 w-3.5" /> Pack
+        <TabsList className={cn("grid w-full shrink-0 bg-black/30", trading ? "grid-cols-5" : "grid-cols-4")}>
+          <TabsTrigger value="inventory" aria-label="Pack" className="px-1 text-xs data-[state=active]:bg-[color-mix(in_oklch,var(--gold)_15%,transparent)] data-[state=active]:text-[var(--gold)]">
+            <Package className={cn("h-3.5 w-3.5", !trading && "mr-1")} /> {!trading && "Pack"}
           </TabsTrigger>
-          <TabsTrigger value="quests" className="px-1 text-xs data-[state=active]:bg-[color-mix(in_oklch,var(--cyan)_15%,transparent)] data-[state=active]:text-cyan">
-            <Scroll className="mr-1 h-3.5 w-3.5" /> Quests
+          <TabsTrigger value="skills" aria-label="Skills" className="px-1 text-xs data-[state=active]:bg-[color-mix(in_oklch,var(--gold)_15%,transparent)] data-[state=active]:text-[var(--gold)]">
+            <Sparkles className={cn("h-3.5 w-3.5", !trading && "mr-1")} /> {!trading && "Skills"}
           </TabsTrigger>
-          <TabsTrigger value="chronicle" className="px-1 text-xs data-[state=active]:bg-[color-mix(in_oklch,var(--magenta)_15%,transparent)] data-[state=active]:text-[var(--magenta)]">
-            <BookOpen className="mr-1 h-3.5 w-3.5" /> Lore
+          <TabsTrigger value="quests" aria-label="Quests" className="px-1 text-xs data-[state=active]:bg-[color-mix(in_oklch,var(--cyan)_15%,transparent)] data-[state=active]:text-cyan">
+            <Scroll className={cn("h-3.5 w-3.5", !trading && "mr-1")} /> {!trading && "Quests"}
+          </TabsTrigger>
+          <TabsTrigger value="chronicle" aria-label="Lore" className="px-1 text-xs data-[state=active]:bg-[color-mix(in_oklch,var(--magenta)_15%,transparent)] data-[state=active]:text-[var(--magenta)]">
+            <BookOpen className={cn("h-3.5 w-3.5", !trading && "mr-1")} /> {!trading && "Lore"}
           </TabsTrigger>
           {trading && (
-            <TabsTrigger value="trade" className="px-1 text-xs data-[state=active]:bg-[color-mix(in_oklch,var(--gold)_15%,transparent)] data-[state=active]:text-[var(--gold)]">
-              <Coins className="mr-1 h-3.5 w-3.5" /> Trade
+            <TabsTrigger value="trade" aria-label="Trade" className="px-1 text-xs data-[state=active]:bg-[color-mix(in_oklch,var(--gold)_15%,transparent)] data-[state=active]:text-[var(--gold)]">
+              <Coins className="h-3.5 w-3.5" />
             </TabsTrigger>
           )}
         </TabsList>
@@ -75,6 +79,10 @@ export function DataPad({ busy, onUseItem }: { busy: boolean; onUseItem: (item: 
             <TradePanel />
           </TabsContent>
         )}
+
+        <TabsContent value="skills" className="mt-3 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden">
+          {state.player && <AbilityList player={state.player} />}
+        </TabsContent>
 
         <TabsContent value="quests" className="mt-3 flex-1 space-y-2 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden">
           {quests.map((q) => (

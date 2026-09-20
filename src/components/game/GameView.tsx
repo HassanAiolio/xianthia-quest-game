@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { CommandBar } from "@/components/game/CommandBar";
 import { DataPad } from "@/components/game/DataPad";
 import { AtlasDialog } from "@/components/game/AtlasDialog";
-import { DiceOverlay, isGoodRoll } from "@/components/game/DiceOverlay";
+import { DiceOverlay, MANUAL_SPIN_MS, isGoodRoll } from "@/components/game/DiceOverlay";
 import { EnemyStrip } from "@/components/game/EnemyCard";
 import { NarrativeLog } from "@/components/game/NarrativeLog";
 import { EndOverlays, LevelUpToast } from "@/components/game/Overlays";
@@ -16,7 +16,7 @@ import { useChronicleKeeper } from "@/hooks/useChronicleKeeper";
 import { useGameAudio } from "@/hooks/useGameAudio";
 import { sound } from "@/audio/sound";
 import { stopVoice } from "@/audio/voice";
-import { playTurn, type TurnInput } from "@/game/engine";
+import { narrateCheckOutcome, playTurn, rollPendingCheck, type TurnInput } from "@/game/engine";
 import { makeLog } from "@/game/log";
 import { describeAiError, runAi } from "@/services/ai";
 import type { DiceRoll, Item } from "@/types/game";
@@ -73,6 +73,30 @@ export function GameView() {
     [busy, state, addLog, discardLog, applyTurnResult]
   );
 
+  /** The player threw the die: show it tumbling, then let the narrator continue. */
+  const rollCheck = useCallback(async () => {
+    const pending = state.pendingCheck;
+    if (!pending || busy || !state.player) return;
+    sound.unlock();
+    stopVoice();
+    const { result, turn } = rollPendingCheck(state);
+    applyTurnResult(turn); // the die starts tumbling straight away
+    setBusy(true);
+    const thrownAt = Date.now();
+    try {
+      const outcome = await narrateCheckOutcome(state, pending, result, { ai: runAi });
+      // Let the die land before the story picks back up.
+      const wait = MANUAL_SPIN_MS + 500 - (Date.now() - thrownAt);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      applyTurnResult(outcome);
+    } catch (err) {
+      console.warn(err);
+      addLog(makeLog("SYSTEM", `${describeAiError(err)} Your roll stands — say what you do next.`, "error"));
+    } finally {
+      setBusy(false);
+    }
+  }, [state, busy, applyTurnResult, addLog]);
+
   const player = state.player;
   if (!player) {
     return (
@@ -120,7 +144,7 @@ export function GameView() {
             </div>
             <DiceOverlay log={state.gameLog} onRoll={() => sound.dice()} onLand={onDiceLand} />
             <NarrativeLog log={state.gameLog} playerName={player.name} thinking={busy} />
-            <CommandBar busy={busy} onPlay={play} />
+            <CommandBar busy={busy} onPlay={play} onRollCheck={rollCheck} />
           </div>
         </main>
 

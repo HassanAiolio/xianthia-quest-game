@@ -1,4 +1,4 @@
-import type { Companion, Enemy, GameSnapshot, GameState, Item, Location, LogMessage, Merchant, Place, Player, Quest } from "@/types/game";
+import type { Companion, Enemy, GameSnapshot, GameState, Item, Location, LogMessage, Merchant, PendingCheck, Place, Player, Quest } from "@/types/game";
 import { makeId } from "./dice";
 import { createEnemy } from "./enemies";
 import { STARTER_ITEMS } from "./items";
@@ -33,6 +33,7 @@ export function newSnapshot(): GameSnapshot {
     merchant: null,
     companion: null,
     visited: [{ ...DEFAULT_LOCATION, chapter: 1 }],
+    pendingCheck: null,
   };
 }
 
@@ -110,6 +111,7 @@ export function migrate(raw: unknown): GameSnapshot | null {
     merchant: isObj(raw.merchant) && Array.isArray(raw.merchant.stock) ? (raw.merchant as Merchant) : null,
     companion: isObj(raw.companion) && typeof raw.companion.name === "string" ? (raw.companion as Companion) : null,
     visited: Array.isArray(raw.visited) && raw.visited.length ? (raw.visited.filter(isObj) as Place[]) : base.visited,
+    pendingCheck: isObj(raw.pendingCheck) && typeof raw.pendingCheck.attempt === "string" ? (raw.pendingCheck as PendingCheck) : null,
   };
 }
 

@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Coins, LogOut, Plus, Shield, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AbilityList } from "@/components/game/AbilityList";
 import { CompanionCard } from "@/components/game/CompanionCard";
 import { VitalBar } from "@/components/game/VitalBar";
 import { GameImage } from "@/components/game/GameImage";
@@ -22,17 +21,17 @@ export function PlayerPanel() {
 
   return (
     <aside className="glass-strong order-2 flex flex-col gap-4 rounded-2xl p-4 lg:order-1 lg:overflow-y-auto [&::-webkit-scrollbar]:hidden">
-      <div className="relative aspect-square overflow-hidden rounded-xl border border-glass-border bg-gradient-to-br from-[oklch(0.2_0.05_270)] to-[oklch(0.12_0.03_290)]">
-        <GameImage src={player.portraitUrl} alt={`Portrait of ${player.name}`} fallback={<User className="h-16 w-16 text-cyan/60" />} />
+      {/* shrink-0: as a flex child this used to get squeezed into a sliver once the panel filled up. */}
+      <div className="relative aspect-[3/4] shrink-0 overflow-hidden rounded-xl border border-glass-border bg-gradient-to-br from-[oklch(0.2_0.05_270)] to-[oklch(0.12_0.03_290)]">
+        <GameImage src={player.portraitUrl} alt={`Portrait of ${player.name}`} fallback={<User className="h-20 w-20 text-cyan/60" />} />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
+          <div className="font-display text-base leading-tight">{player.name}</div>
+          <div className="text-[10px] uppercase tracking-wider text-cyan">
+            Lv {player.level} · {player.class}
+          </div>
+        </div>
         <div className="scanlines pointer-events-none absolute inset-0 z-10 opacity-30" />
         <div className="absolute inset-x-0 top-0 z-20 h-px" style={{ background: "var(--gradient-cyan)" }} />
-      </div>
-
-      <div>
-        <h2 className="font-display text-lg leading-tight">{player.name}</h2>
-        <div className="text-xs uppercase tracking-wider text-cyan">
-          Lv {player.level} · {player.class}
-        </div>
       </div>
 
       <div className="space-y-2.5">
@@ -95,8 +94,6 @@ export function PlayerPanel() {
       </div>
 
       {state.companion && <CompanionCard companion={state.companion} />}
-
-      <AbilityList player={player} />
 
       <Button
         variant="ghost"

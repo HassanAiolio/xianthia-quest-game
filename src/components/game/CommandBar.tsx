@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { FlaskConical, Footprints, Moon, Send, Shield, Sparkles, Sword, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CheckPrompt } from "@/components/game/CheckPrompt";
 import { Input } from "@/components/ui/input";
 import { useGameStore } from "@/hooks/useGameStore";
 import { unlockedAbilities } from "@/game/abilities";
@@ -18,9 +19,10 @@ interface CommandBarProps {
   busy: boolean;
   /** Resolves false when the turn failed (e.g. narrator offline). */
   onPlay: (input: TurnInput, echo: string) => Promise<boolean>;
+  onRollCheck: () => void;
 }
 
-export function CommandBar({ busy, onPlay }: CommandBarProps) {
+export function CommandBar({ busy, onPlay, onRollCheck }: CommandBarProps) {
   const { state } = useGameStore();
   const [text, setText] = useState("");
   const [itemsOpen, setItemsOpen] = useState(false);
@@ -52,10 +54,13 @@ export function CommandBar({ busy, onPlay }: CommandBarProps) {
   }
 
   const suggestions = state.suggestions.length ? state.suggestions : DEFAULT_SUGGESTIONS;
+  const pending = state.pendingCheck;
 
   return (
     <div className="shrink-0 border-t border-glass-border p-3">
-      {inCombat ? (
+      {pending ? (
+        <CheckPrompt check={pending} busy={busy} onRoll={onRollCheck} />
+      ) : inCombat ? (
         <div className="mb-2 space-y-2">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             <Button variant="outline" size="sm" disabled={disabled} onClick={() => combat({ kind: "attack" }, "Attack!")} className={chip}>
@@ -141,16 +146,16 @@ export function CommandBar({ busy, onPlay }: CommandBarProps) {
         <Input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={inCombat ? "Describe your move, then pick an action (or just type it)…" : "What do you do?"}
+          placeholder={pending ? "Roll the die to see what happens…" : inCombat ? "Describe your move, then pick an action (or just type it)…" : "What do you do?"}
           aria-label={inCombat ? "Describe your combat move" : "Your action"}
-          disabled={disabled}
+          disabled={disabled || Boolean(pending)}
           maxLength={500}
           className="h-11 flex-1 border-glass-border bg-[var(--input)] focus-visible:ring-[var(--gold)]"
         />
         <Button
           type="submit"
           aria-label="Send"
-          disabled={disabled || !text.trim()}
+          disabled={disabled || Boolean(pending) || !text.trim()}
           className="h-11 bg-gradient-to-r from-[var(--gold)] to-[oklch(0.92_0.18_90)] px-4 font-display tracking-wider text-[var(--gold-foreground)] hover:opacity-95"
         >
           <Send className="h-4 w-4" />

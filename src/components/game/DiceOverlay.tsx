@@ -4,6 +4,8 @@ import type { DiceRoll, LogMessage } from "@/types/game";
 import { cn } from "@/lib/utils";
 
 export const DICE_SPIN_MS = 650;
+/** A die the player threw themselves gets a proper tumble. */
+export const MANUAL_SPIN_MS = 1900;
 const HOLD_MS = 750;
 
 /** Good or bad from the player's point of view (an enemy's miss is good news). */
@@ -84,12 +86,13 @@ export function DiceOverlay({ log, onRoll, onLand }: { log: LogMessage[]; onRoll
     if (key === undefined) return;
     if (!landed) {
       const flicker = setInterval(() => setCurrent((c) => (c && !c.landed ? { ...c, face: 1 + Math.floor(Math.random() * 20) } : c)), 60);
+      const spinMs = currentRef.current?.die.manual ? MANUAL_SPIN_MS : DICE_SPIN_MS;
       const land = setTimeout(() => {
         clearInterval(flicker);
         // Side effects stay out of the state updater (StrictMode may run updaters twice).
         if (currentRef.current) callbacks.current.onLand?.(currentRef.current.die);
         setCurrent((c) => (c ? { ...c, landed: true, face: c.die.natural } : c));
-      }, DICE_SPIN_MS);
+      }, spinMs);
       return () => {
         clearInterval(flicker);
         clearTimeout(land);

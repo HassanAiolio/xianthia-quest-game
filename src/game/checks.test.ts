@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DC, checkBonus, describeCheck, rollCheck } from "./checks";
-import { playTurn } from "./engine";
+import { narrateCheckOutcome, playTurn, rollPendingCheck } from "./engine";
+import { applyTurn } from "./turn";
 import { STARTER_ITEMS } from "./items";
 import { sanitizeCheck } from "./sanitize";
 import { face, makePlayer, makeState, scriptedRng, seededRng } from "./testing";
@@ -54,18 +55,33 @@ describe("engine — check flow", () => {
       .fn<AiRunner>()
       .mockResolvedValueOnce({ ...base, narrative: "You grip the ledge.", check: { stat: "dex", difficulty: "medium", attempt: "climb the ledge" } })
       .mockResolvedValueOnce({ ...base, narrative: "You haul yourself over.", xpAward: 10, check: { stat: "str", difficulty: "hard", attempt: "again" } });
-    const r = await playTurn(makeState({ player: stalker }), { kind: "text", text: "climb the ledge" }, { ai, rng: scriptedRng([face(15)]) });
+    const start = makeState({ player: stalker });
 
-    expect(r.logs.map((l) => l.text)).toEqual([
-      "You grip the ledge.",
-      expect.stringMatching(/^DEX check \(medium\) — climb the ledge: d20 15 \+7 = 22 vs DC 13 — SUCCESS/),
-      "You haul yourself over.",
-      expect.stringMatching(/^\+\d+ XP$/),
-    ]);
-    expect(r.logs[1].dice?.[0]).toMatchObject({ natural: 15, target: 13, outcome: "success" });
-    expect(r.xpGain).toBe(6); // the medium-check reward only; the narrator's extra 10 is ignored
-    // The second call is told the verdict; a second check request is ignored.
-    expect(ai).toHaveBeenCalledTimes(2);
+    // 1. The narrator sets the scene and hands the die over — no roll yet.
+    const asked = await playTurn(start, { kind: "text", text: "climb the ledge" }, { ai });
+    expect(asked.logs.map((l) => l.text)).toEqual(["You grip the ledge."]);
+    expect(asked.pendingCheck).toMatchObject({ stat: "dex", attempt: "climb the ledge", dc: 13, bonus: 7, action: "climb the ledge" });
+    expect(ai).toHaveBeenCalledTimes(1);
+
+    const waiting = applyTurn(start, asked);
+    expect(waiting.pendingCheck).not.toBeNull();
+
+    // 2. The player rolls: the die and its XP land immediately.
+    const { result, turn } = rollPendingCheck(waiting, scriptedRng([face(15)]));
+    expect(result.success).toBe(true);
+    expect(turn.logs[0].text).toMatch(/^DEX check \(medium\) — climb the ledge: d20 15 \+7 = 22 vs DC 13 — SUCCESS/);
+    expect(turn.logs[0].dice?.[0]).toMatchObject({ natural: 15, target: 13, outcome: "success", manual: true });
+    expect(turn.xpGain).toBe(6);
+    expect(turn.pendingCheck).toBeNull();
+    const rolled = applyTurn(waiting, turn);
+    expect(rolled.pendingCheck).toBeNull();
+
+    // 3. The narrator is told the verdict and carries on; no second check, no extra XP.
+    const outcome = await narrateCheckOutcome(rolled, waiting.pendingCheck!, result, { ai });
+    expect(outcome.logs[0].text).toBe("You haul yourself over.");
+    expect(outcome.xpGain).toBeUndefined();
+    expect(outcome.pendingCheck).toBeUndefined();
+    expect(outcome.storyTurn).toBe(true);
     expect(ai.mock.calls[1][1][1].content).toMatch(/ABILITY CHECK RESOLVED .* was a SUCCESS/);
   });
 
@@ -74,8 +90,13 @@ describe("engine — check flow", () => {
       .fn<AiRunner>()
       .mockResolvedValueOnce({ ...base, narrative: "You lunge.", check: { stat: "str", difficulty: "hard", attempt: "force the door" } })
       .mockResolvedValueOnce({ ...base, narrative: "It holds." });
-    const r = await playTurn(makeState({ player: stalker }), { kind: "text", text: "force it" }, { ai, rng: scriptedRng([face(2)]) });
-    expect(r.xpGain).toBeUndefined();
+    const start = makeState({ player: stalker });
+    const waiting = applyTurn(start, await playTurn(start, { kind: "text", text: "force it" }, { ai }));
+    const { result, turn } = rollPendingCheck(waiting, scriptedRng([face(2)]));
+    expect(result.success).toBe(false);
+    expect(turn.xpGain).toBeUndefined();
+
+    await narrateCheckOutcome(applyTurn(waiting, turn), waiting.pendingCheck!, result, { ai });
     expect(ai.mock.calls[1][1][1].content).toMatch(/was a FAILURE/);
   });
 

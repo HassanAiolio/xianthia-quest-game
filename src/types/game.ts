@@ -131,6 +131,22 @@ export type LogSender = "SYSTEM" | "AI" | "PLAYER";
 /** Visual flavour for SYSTEM lines. "error" = out-of-game problem, never shown to the AI. */
 export type LogTone = "info" | "roll" | "reward" | "danger" | "error";
 
+export type Difficulty = "easy" | "medium" | "hard" | "extreme";
+
+/** A check the narrator asked for and the player hasn't rolled yet. */
+export interface PendingCheck {
+  stat: StatKey;
+  difficulty: Difficulty;
+  /** What is being attempted, in a few words. */
+  attempt: string;
+  /** The action the player typed, replayed to the narrator once the die lands. */
+  action: string;
+  /** The narration already shown for the attempt beginning. */
+  setup: string;
+  dc: number;
+  bonus: number;
+}
+
 /** One visible d20 roll, carried by "roll" log lines so the UI can animate it. */
 export interface DiceRoll {
   who: "player" | "enemy" | "ally";
@@ -141,6 +157,8 @@ export interface DiceRoll {
   /** AC or DC the total was compared to. */
   target: number;
   outcome: "success" | "failure" | "critical" | "fumble";
+  /** Rolled by the player on purpose: the animation takes its time. */
+  manual?: boolean;
 }
 
 export interface LogMessage {
@@ -191,6 +209,8 @@ export interface GameSnapshot {
   merchant: Merchant | null;
   companion: Companion | null;
   visited: Place[];
+  /** The die is in the player's hand until they roll it. */
+  pendingCheck: PendingCheck | null;
 }
 
 export interface ClassDefinition {

@@ -1,6 +1,6 @@
-import type { DiceRoll, GameSnapshot, Item, LogMessage, LogSender, LogTone, Player } from "@/types/game";
+import type { DiceRoll, GameSnapshot, Item, LogMessage, LogSender, LogTone, PendingCheck, Player } from "@/types/game";
 import type { AiRunner } from "@/services/ai";
-import { checkDice, describeCheck, rollCheck } from "./checks";
+import { checkDice, describeCheck, pendingCheckFor, rollCheck, type CheckResult } from "./checks";
 import { ROLE_LABEL, createCompanion, restCompanion } from "./companions";
 import { generateStock, shardReward } from "./economy";
 import { describeRound, fallbackCombatNarrative, resolveCombatRound, roundDice, type CombatAction } from "./combat";
@@ -133,6 +133,8 @@ interface NarrateOptions {
   fallbackNarrative?: string;
   /** Resting is resolved by the engine: no ability checks there. */
   allowCheck?: boolean;
+  /** The check already paid XP: ignore whatever the narrator proposes on top. */
+  suppressNarratorXp?: boolean;
 }
 
 async function narrateTurn(
@@ -154,23 +156,19 @@ async function narrateTurn(
     raw = { narrative: opts.fallbackNarrative };
   }
 
-  // The narrator asked for an ability check: show the attempt, roll, then ask for the outcome.
+  // The narrator asked for an ability check: show the attempt and hand the die to the player.
   const check = opts.allowCheck === false ? null : sanitizeCheck(raw);
-  let checkXp = 0;
   if (check) {
     const setup = sanitizeNarration(raw, ctx).narrative;
-    const result = rollCheck(player, state.inventory, check, deps.rng ?? Math.random);
     if (setup) turn.log("AI", setup);
-    turn.log("SYSTEM", describeCheck(result), "roll", [checkDice(result)]);
-    raw = await deps.ai("narrate", buildNarrateMessages(state, action, checkOutcomeNote(result, setup)));
-    checkXp = result.xp;
+    return turn.result({ pendingCheck: pendingCheckFor(player, state.inventory, check, action, setup) });
   }
 
   const n = sanitizeNarration(raw, ctx);
   turn.log("AI", n.narrative || opts.fallbackNarrative || "The glyphs pulse, patient. Nothing answers — yet.");
   const extra: Omit<TurnResult, "id" | "timestamp" | "logs"> = { storyTurn: true };
-  // On a check turn the check's own reward replaces the narrator's discovery XP (no double dipping).
-  let xp = check ? checkXp : n.xpAward;
+  // After a check, its own reward already paid out: ignore the narrator's discovery XP.
+  let xp = opts.suppressNarratorXp ? 0 : n.xpAward;
 
   if (n.location) extra.location = n.location;
   if (n.hpDelta) {
@@ -243,6 +241,29 @@ async function narrateTurn(
     extra.suggestions = n.suggestions.length ? n.suggestions : state.suggestions;
   }
   return turn.result(extra);
+}
+
+/**
+ * The player pressed "roll": the die and its XP land immediately, so the animation
+ * can start while the narrator works out what the result means.
+ */
+export function rollPendingCheck(state: GameSnapshot, rng: Rng = Math.random): { result: CheckResult; turn: TurnResult } {
+  const player = state.player!;
+  const pending = state.pendingCheck!;
+  const turn = new Turn();
+  const result = rollCheck(player, state.inventory, pending, rng);
+  turn.log("SYSTEM", describeCheck(result), "roll", [checkDice(result, true)]);
+  if (result.xp) turn.log("SYSTEM", `+${result.xp} XP`, "reward");
+  return { result, turn: turn.result({ pendingCheck: null, ...(result.xp ? { xpGain: result.xp } : {}) }) };
+}
+
+/** …and then the narrator says what that roll meant. */
+export function narrateCheckOutcome(state: GameSnapshot, pending: PendingCheck, result: CheckResult, deps: EngineDeps): Promise<TurnResult> {
+  return narrateTurn(state, state.player!, pending.action, deps, {
+    note: checkOutcomeNote(result, pending.setup),
+    allowCheck: false,
+    suppressNarratorXp: true,
+  });
 }
 
 async function combatTurn(

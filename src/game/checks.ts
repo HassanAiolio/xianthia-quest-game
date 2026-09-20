@@ -1,8 +1,8 @@
-import { classDef, type DiceRoll, type Item, type Player, type StatKey } from "@/types/game";
+import { classDef, type DiceRoll, type Difficulty, type Item, type PendingCheck, type Player, type StatKey } from "@/types/game";
+
+export type { Difficulty };
 import { roll, type Rng } from "./dice";
 import { critThreshold, effectiveStats, mod, proficiency, scaleReward } from "./stats";
-
-export type Difficulty = "easy" | "medium" | "hard" | "extreme";
 
 /** Classic difficulty classes. A level-1 hero with +4 passes a medium check ~60% of the time. */
 export const DC: Record<Difficulty, number> = { easy: 10, medium: 13, hard: 16, extreme: 19 };
@@ -34,6 +34,11 @@ export function checkBonus(player: Player, inventory: Item[], stat: StatKey): nu
   return mod(effectiveStats(player, inventory)[stat]) + (proficient ? proficiency(player.level) : 0);
 }
 
+/** What the player is told before they roll: the target and their bonus. */
+export function pendingCheckFor(player: Player, inventory: Item[], req: CheckRequest, action: string, setup: string): PendingCheck {
+  return { ...req, action, setup, dc: DC[req.difficulty], bonus: checkBonus(player, inventory, req.stat) };
+}
+
 export function rollCheck(player: Player, inventory: Item[], req: CheckRequest, rng: Rng): CheckResult {
   const natural = roll(20, rng);
   const bonus = checkBonus(player, inventory, req.stat);
@@ -53,10 +58,11 @@ export function describeCheck(r: CheckResult): string {
   return `${r.stat.toUpperCase()} check (${r.difficulty}) — ${r.attempt}: d20 ${r.natural} ${sign}${r.bonus} = ${r.natural + r.bonus} vs DC ${r.dc} — ${checkVerdict(r)}`;
 }
 
-export function checkDice(r: CheckResult): DiceRoll {
+export function checkDice(r: CheckResult, manual = false): DiceRoll {
   return {
     who: "player",
     kind: "check",
+    ...(manual ? { manual: true } : {}),
     label: `${STAT_NAMES[r.stat]} check`,
     natural: r.natural,
     bonus: r.bonus,
