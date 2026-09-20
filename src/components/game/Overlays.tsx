@@ -2,9 +2,26 @@ import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowUpCircle, Skull, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { LegendButton } from "@/components/game/LegendDialog";
 import { useGameStore } from "@/hooks/useGameStore";
+import { choiceLabel, chooseEnding } from "@/game/story";
 
-function EndScreen({ icon, title, body, actions }: { icon: React.ReactNode; title: string; body: string; actions: React.ReactNode }) {
+function EndScreen({
+  icon,
+  title,
+  body,
+  writing,
+  choices,
+  actions,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  body: string;
+  /** The epilogue is still being written. */
+  writing?: boolean;
+  choices?: string[];
+  actions: React.ReactNode;
+}) {
   const firstAction = useRef<HTMLDivElement>(null);
   useEffect(() => firstAction.current?.querySelector("button")?.focus(), []);
   return (
@@ -22,7 +39,22 @@ function EndScreen({ icon, title, body, actions }: { icon: React.ReactNode; titl
         <h2 id="end-title" className="text-gradient-gold mt-4 font-display text-3xl">
           {title}
         </h2>
-        <p className="mt-2 text-sm text-muted-foreground">{body}</p>
+        <p className="mt-3 whitespace-pre-line text-left text-sm leading-relaxed text-muted-foreground">{body}</p>
+        {writing && (
+          <p className="mt-2 animate-pulse text-center text-[11px] uppercase tracking-wider text-cyan">The Aether-Core is writing your epilogue…</p>
+        )}
+        {choices && choices.length > 0 && (
+          <div className="mt-4">
+            <div className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">What you did</div>
+            <div className="mt-1.5 flex flex-wrap justify-center gap-1.5">
+              {choices.map((c) => (
+                <span key={c} className="rounded-full border border-[var(--gold)]/40 px-2 py-0.5 text-[10px] text-[var(--gold)]">
+                  {c}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         <div ref={firstAction} className="mt-6 flex flex-wrap justify-center gap-3">
           {actions}
         </div>
@@ -34,6 +66,8 @@ function EndScreen({ icon, title, body, actions }: { icon: React.ReactNode; titl
 export function EndOverlays() {
   const { state, reset, setGameState } = useGameStore();
   const player = state.player!;
+  const epilogue = state.epilogue;
+  const choices = state.flags.map((f) => choiceLabel(f)).filter(Boolean) as string[];
   const forgeAnew = () => {
     reset();
     setGameState("CHARACTER_CREATION");
@@ -45,13 +79,16 @@ export function EndOverlays() {
         <EndScreen
           key="over"
           icon={<Skull className="mx-auto h-12 w-12 text-destructive" />}
-          title="The Rift Claims You"
-          body={`Your story ends here, ${player.name}. But the Rift remembers.`}
+          title={epilogue?.title ?? "The Rift Claims You"}
+          body={epilogue?.text ?? `Your story ends here, ${player.name}. But the Rift remembers.`}
+          writing={!epilogue}
+          choices={choices}
           actions={
             <>
               <Button onClick={forgeAnew} className="bg-gradient-to-r from-[var(--gold)] to-[var(--cyan)] text-[var(--gold-foreground)]">
                 Forge anew
               </Button>
+              <LegendButton />
               <Button variant="outline" onClick={reset}>
                 Return to the gates
               </Button>
@@ -63,13 +100,16 @@ export function EndOverlays() {
         <EndScreen
           key="victory"
           icon={<Trophy className="mx-auto h-12 w-12 text-[var(--gold)]" />}
-          title="Chronicle 0 Complete"
-          body={`${player.name} reclaimed their name and broke the Hollow Regent's hold on time. Level ${player.level}. Xianthia's clocks begin to turn again.`}
+          title={epilogue?.title ?? chooseEnding(state.flags).title}
+          body={epilogue?.text ?? `${player.name} broke the Hollow Regent's hold on time. Level ${player.level}. Xianthia's clocks begin to turn again.`}
+          writing={!epilogue}
+          choices={choices}
           actions={
             <>
               <Button onClick={() => setGameState("PLAYING")} className="bg-gradient-to-r from-[var(--gold)] to-[var(--cyan)] text-[var(--gold-foreground)]">
                 Keep exploring
               </Button>
+              <LegendButton />
               <Button variant="outline" onClick={forgeAnew}>
                 Forge anew
               </Button>

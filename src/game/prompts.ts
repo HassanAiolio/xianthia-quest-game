@@ -4,7 +4,7 @@ import type { CombatRound } from "./combat";
 import { describeRound } from "./combat";
 import { TIERS } from "./enemies";
 import { effectiveStats } from "./stats";
-import { CHAPTERS, climaxReady, getChapter } from "./story";
+import { CHAPTERS, beatHooks, choiceLabel, chooseEnding, climaxReady, getChapter } from "./story";
 
 export interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -27,7 +27,7 @@ MECHANICAL FIELDS (the game engine applies and limits them)
 - hpDelta: damage from hazards, traps or exhaustion (negative), rare minor healing (positive). Usually 0. Never use it for combat — fights are resolved by the engine.
 - mpDelta: usually 0.
 - xpAward: 0 on ordinary turns; 5–15 for a clever discovery, a solved puzzle or a meaningful story beat.
-- encounter: only when a hostile creature attacks or the player deliberately starts a fight; otherwise null. Narrate only the moment the fight begins — the enemy appears, lunges or squares up. No blow lands yet and nobody is hurt: the engine resolves the fight round by round. tier: minion (weak), standard, elite (dangerous). Use "boss" only when the chapter note says the climax is available.
+- encounter: only when a hostile creature attacks or the player deliberately starts a fight; otherwise null. Narrate only the moment the fight begins — the enemy appears, lunges or squares up. No blow lands yet and nobody is hurt: the engine resolves the fight round by round. tier: minion (weak), standard, elite (dangerous). Use "boss" only when the chapter note says the climax is available. Set ranged true only for creatures that fight from a distance — archers, gunners, casters, snipers; anything with claws or a blade is false.
 - newLocation: only when the player moves to a different area. name 2–5 words; description 2 sentences; imageDescription is a short visual scene description for an image generator (no character names).
 - itemsFound: only when the player actually takes something tangible; usually []. At most one item. statBonus: all 0 except a small bonus (+1) for a weapon or artifact. armorBonus: 1 for armor, else 0. healHp/restoreMp: 10–30 for consumables, else 0.
 - itemsConsumed: inventory IDs used up by the story (a key turned in a lock, an offering given). Healing consumables are used through the engine; never consume them here.
@@ -41,6 +41,9 @@ TRADE, ALLIES AND MONEY — these three fields must match what your own narrativ
 - Did someone agree to travel with the player, watch their back or fight at their side? → set companionJoins: { name, role, description }, role = fighter, healer or mystic. Talking a reluctant one round is an ability check first: set the field on the turn they actually say yes. Leave it null if the player already has a companion or nobody agreed.
 - Did the current companion walk away, die or get dismissed? → companionLeaves: true. Otherwise false.
 
+WHAT THE WORLD REMEMBERS
+- flagsSet: the ids of any listed chapter decisions your narrative just made true. Usually []. Set one only when it actually happened in the fiction — these decide how the whole story ends, and they never come back off.
+
 ABILITY CHECKS (the dice decide, not you)
 - When an action's outcome is genuinely uncertain AND failing would matter — climbing, forcing, sneaking, dodging a trap, persuading, deceiving, deciphering, hacking, gambling — do not decide it. Set check instead: stat (str = force and athletics, dex = stealth, agility and precision, int = knowledge, tech, magic and perception, lck = pure chance), difficulty (easy, medium, hard, extreme) and attempt (3–6 words, e.g. "scale the shattered spire").
 - With a check, the narrative describes only the attempt beginning (1–2 sentences, no outcome) and every other mechanical field stays empty, null or 0.
@@ -48,6 +51,11 @@ ABILITY CHECKS (the dice decide, not you)
 
 const COMBAT_SYSTEM = `You are the Aether-Core, narrator of Xianthia (dark cyberpunk-fantasy). Narrate ONE round of combat in 2–3 vivid sentences, at most 70 words, second person, present tense.
 The round's dice results are final: hits are hits and misses are misses. Never state numbers, hit points, damage values, dice or armor class — convey them through description ("staggering", "barely standing"). Do not add new effects, new enemies or outcomes. Weave in the player's stated intent when there is one, but never let it override the results. If the enemy is defeated, describe its end. If the player escaped, describe the escape. If a companion acts, give them a moment in the sentence. If the results announce PHASE 2, make the enemy's transformation the centre of the round.`;
+
+const EPILOGUE_SYSTEM = `You are the Aether-Core, closing out a player's run through Xianthia (dark cyberpunk-fantasy).
+Write the epilogue: 120–180 words, second person, past and present tense mixed, no dialogue tags, no headings.
+Use the chronicle and the decisions listed: name the people and places the player actually met, and let their choices shape what the city becomes. Do not invent a sequel hook the player never earned, do not mention game mechanics, dice, levels or stats.
+End on one short line that lands — an image, not a summary.`;
 
 const CHRONICLE_SYSTEM = `You keep the chronicle of a text RPG: the compact long-term memory the narrator reads every turn.
 Merge the previous chronicle with the new events into an updated chronicle.
@@ -85,6 +93,32 @@ export function recentEntries(state: GameSnapshot): LogMessage[] {
   return story.slice(-Math.min(14, Math.max(6, unsummarized)));
 }
 
+/** The closing text for a finished run: victory with its ending, or death. */
+export function buildEpilogueMessages(state: GameSnapshot, outcome: "victory" | "death"): ChatMessage[] {
+  const p = state.player!;
+  const ending = outcome === "victory" ? chooseEnding(state.flags) : null;
+  const decisions = state.flags.map((f) => choiceLabel(f)).filter(Boolean);
+  const user = `PLAYER: ${p.name}, level ${p.level} ${p.class}.
+LAST PLACE: ${state.currentLocation.name} — ${state.currentLocation.description}
+DECISIONS THE WORLD REMEMBERS: ${decisions.length ? decisions.join("; ") : "none of note"}
+
+CHRONICLE:
+${state.chronicle || "(the adventure was short)"}
+
+RECENT EVENTS:
+${recentEntries(state).slice(-6).map(formatEntry).join("\n")}
+
+${
+  ending
+    ? `ENDING — "${ending.title}": ${ending.tone}`
+    : `ENDING — the player died here, before the story was finished. Close their run with weight: what is lost, what Xianthia keeps of them, what the Rift remembers. No resurrection, no consolation prize.`
+}`;
+  return [
+    { role: "system", content: EPILOGUE_SYSTEM },
+    { role: "user", content: user },
+  ];
+}
+
 function chapterBlock(state: GameSnapshot): string {
   const ch = getChapter(state.chapter);
   if (!ch) {
@@ -93,10 +127,18 @@ function chapterBlock(state: GameSnapshot): string {
   const pacing = climaxReady(state.chapter, state.turnsInChapter)
     ? `CLIMAX AVAILABLE: when the player moves toward the goal (or after a few more turns, regardless), bring them face to face with ${ch.boss.name} — ${ch.boss.imageDescription} — and set encounter.tier to "boss".${state.turnsInChapter >= ch.minTurns + 6 ? " The story has lingered: steer decisively toward the climax now." : ""}`
     : `Build toward the goal; it is too early for the climax (story turn ${state.turnsInChapter + 1} of ~${ch.minTurns}). No "boss" tier yet.`;
+  const choices = ch.choices.map((c) => `  - ${c.id}: ${c.when}`).join("\n");
+  // Two of the chapter's four threads, drawn for this run: the reason a second playthrough differs.
+  const threads = beatHooks(state.chapter, state.beats);
+  const woven = threads.length
+    ? `\nTHREADS DRAWN FOR THIS RUN (work them in when the story has room; they are yours to shape, and one that no longer fits may be dropped):\n${threads.map((t) => `  - ${t}`).join("\n")}`
+    : "";
   return `CHAPTER ${ch.id}/${CHAPTERS.length}: ${ch.title}
 Main goal: ${ch.goal}
 Story direction: ${ch.guidance}
-${pacing}`;
+${pacing}${woven}
+DECISIONS THIS CHAPTER CAN BE REMEMBERED FOR (set the id in flagsSet when your narrative makes one true):
+${choices}`;
 }
 
 export function buildNarrateMessages(state: GameSnapshot, action: string, engineNote?: string): ChatMessage[] {
@@ -132,6 +174,7 @@ LOCATION: ${state.currentLocation.name} — ${state.currentLocation.description}
 
 CHRONICLE (story so far):
 ${state.chronicle || "The adventure has just begun."}
+${state.flags.length ? `\nALREADY REMEMBERED: ${state.flags.map((f) => choiceLabel(f)).filter(Boolean).join("; ")}` : ""}
 
 RECENT EVENTS:
 ${recent}

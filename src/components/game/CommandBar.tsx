@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { FlaskConical, Footprints, Moon, Send, Shield, Sparkles, Sword, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CheckPrompt } from "@/components/game/CheckPrompt";
+import { Hint } from "@/components/game/Hint";
 import { Input } from "@/components/ui/input";
 import { useGameStore } from "@/hooks/useGameStore";
 import { unlockedAbilities } from "@/game/abilities";
@@ -62,6 +63,10 @@ export function CommandBar({ busy, onPlay, onRollCheck }: CommandBarProps) {
         <CheckPrompt check={pending} busy={busy} onRoll={onRollCheck} />
       ) : inCombat ? (
         <div className="mb-2 space-y-2">
+          <Hint id="first-combat">
+            A fight runs in rounds: strike, spend MP on an ability, brace to halve the next blow, drink something, or run for it. Every die is
+            shown in the log — and you can describe your move in the box first.
+          </Hint>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             <Button variant="outline" size="sm" disabled={disabled} onClick={() => combat({ kind: "attack" }, "Attack!")} className={chip}>
               <Sword /> Attack
@@ -130,7 +135,15 @@ export function CommandBar({ busy, onPlay, onRollCheck }: CommandBarProps) {
           )}
         </div>
       ) : (
-        <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-4">
+        <div className="mb-2">
+          <Hint id="first-action">
+            Type anything you want to do — the Aether-Core answers whatever you try, not a fixed list. The buttons below are only
+            suggestions.
+          </Hint>
+        </div>
+      )}
+      {!pending && !inCombat && (
+        <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {suggestions.map((s) => (
             <Button key={s} variant="outline" size="sm" disabled={disabled} onClick={() => void onPlay({ kind: "text", text: s }, s)} className={chip}>
               <Wand2 className="text-cyan/70" /> {s}

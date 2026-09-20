@@ -5,15 +5,16 @@ import { GameImage } from "@/components/game/GameImage";
 import { useGameStore } from "@/hooks/useGameStore";
 import { sceneUrl } from "@/services/imageService";
 import { CHAPTERS, getChapter } from "@/game/story";
+import { cn } from "@/lib/utils";
 
-export function SceneBanner({ onOpenAtlas }: { onOpenAtlas: () => void }) {
+export function SceneBanner({ onOpenAtlas, className }: { onOpenAtlas: () => void; className?: string }) {
   const { state } = useGameStore();
   const location = state.currentLocation;
   const src = useMemo(() => sceneUrl(location), [location]);
   const chapter = getChapter(state.chapter);
 
   return (
-    <div className="glass-strong relative shrink-0 overflow-hidden rounded-2xl">
+    <div className={cn("glass-strong relative shrink-0 overflow-hidden rounded-2xl", className)}>
       <div className="relative aspect-[21/9] bg-gradient-to-br from-[oklch(0.18_0.05_280)] via-[oklch(0.14_0.04_260)] to-[oklch(0.12_0.06_320)] lg:aspect-[3/1]">
         <GameImage src={src} alt={location.name} fallback={null} className="opacity-85" />
         <div className="scanlines absolute inset-0 opacity-25" />

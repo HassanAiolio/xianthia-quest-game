@@ -2,6 +2,7 @@ import type { CompanionRole, EnemyTier, Item, ItemType, Location, Player, Quest,
 import { clamp } from "./dice";
 import type { CheckRequest, Difficulty } from "./checks";
 import type { EnemySpec } from "./enemies";
+import { ALL_CHOICES } from "./story";
 import { armorCap, statBudget, xpToNext } from "./stats";
 
 export { armorCap, statBudget };
@@ -40,6 +41,7 @@ export interface Narration {
   merchant: { name: string; description: string } | null;
   companionJoins: { name: string; role: CompanionRole; description: string } | null;
   companionLeaves: boolean;
+  flagsSet: string[];
 }
 
 const ITEM_TYPES: ItemType[] = ["weapon", "armor", "consumable", "artifact", "key"];
@@ -119,7 +121,7 @@ export function sanitizeNarration(raw: unknown, ctx: NarrationContext): Narratio
       let tier = TIERS.includes(r.encounter.tier as EnemyTier) ? (r.encounter.tier as EnemyTier) : "standard";
       // Bosses only appear when the chapter is ready for its climax (the engine substitutes the canonical boss).
       if (tier === "boss" && !ctx.climaxReady) tier = "elite";
-      encounter = { name, tier, imageDescription: text(r.encounter.imageDescription, 200) || name };
+      encounter = { name, tier, ranged: r.encounter.ranged === true, imageDescription: text(r.encounter.imageDescription, 200) || name };
     }
   }
 
@@ -181,5 +183,7 @@ export function sanitizeNarration(raw: unknown, ctx: NarrationContext): Narratio
     merchant,
     companionJoins,
     companionLeaves: r.companionLeaves === true,
+    // Only the curated story flags exist; anything invented is dropped.
+    flagsSet: [...new Set(list(r.flagsSet).map((f) => text(f, 40)))].filter((f) => ALL_CHOICES.some((c) => c.id === f)),
   };
 }

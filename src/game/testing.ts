@@ -1,5 +1,6 @@
 // Shared fixtures for unit tests.
-import type { GameSnapshot, Player } from "@/types/game";
+import type { Battlefield, GameSnapshot, Player } from "@/types/game";
+import { BOARD } from "./battlefield";
 import type { Rng } from "./dice";
 import { newSnapshot } from "./save";
 
@@ -19,8 +20,15 @@ export function makePlayer(overrides: Partial<Player> = {}): Player {
   };
 }
 
+/** An empty arena with everyone toe to toe, so dice tests are not about footwork. */
+export function makeBattlefield(over: Partial<Battlefield> = {}): Battlefield {
+  return { ...BOARD, cover: [], player: { x: 3, y: 3 }, ally: { x: 3, y: 4 }, enemy: { x: 4, y: 3 }, ...over };
+}
+
 export function makeState(overrides: Partial<GameSnapshot> = {}): GameSnapshot {
-  return { ...newSnapshot(), player: makePlayer(), gameState: "PLAYING", ...overrides };
+  const state = { ...newSnapshot(), player: makePlayer(), gameState: "PLAYING" as const, ...overrides };
+  if (state.gameState === "COMBAT" && !state.battlefield) state.battlefield = makeBattlefield();
+  return state;
 }
 
 /** Deterministic PRNG (mulberry32) for simulations. */

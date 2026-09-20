@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 
 const STAT_LABELS: Record<StatKey, string> = { str: "Strength", int: "Intellect", dex: "Dexterity", lck: "Luck" };
 
-export function PlayerPanel() {
+export function PlayerPanel({ className }: { className?: string }) {
   const { state, spendStatPoint, reset } = useGameStore();
   const [confirmAbandon, setConfirmAbandon] = useState(false);
   const player = state.player!;
@@ -20,9 +20,14 @@ export function PlayerPanel() {
   const effective = effectiveStats(player, state.inventory);
 
   return (
-    <aside className="glass-strong order-2 flex flex-col gap-4 rounded-2xl p-4 lg:order-1 lg:overflow-y-auto [&::-webkit-scrollbar]:hidden">
+    <aside
+      className={cn(
+        "glass-strong order-2 flex min-h-0 flex-col gap-4 overflow-y-auto rounded-2xl p-4 lg:order-1 [&::-webkit-scrollbar]:hidden",
+        className
+      )}
+    >
       {/* shrink-0: as a flex child this used to get squeezed into a sliver once the panel filled up. */}
-      <div className="relative aspect-[3/4] shrink-0 overflow-hidden rounded-xl border border-glass-border bg-gradient-to-br from-[oklch(0.2_0.05_270)] to-[oklch(0.12_0.03_290)]">
+      <div className="relative mx-auto aspect-[3/4] h-[38svh] w-[28.5svh] shrink-0 overflow-hidden rounded-xl border border-glass-border lg:h-auto lg:w-full bg-gradient-to-br from-[oklch(0.2_0.05_270)] to-[oklch(0.12_0.03_290)]">
         <GameImage src={player.portraitUrl} alt={`Portrait of ${player.name}`} fallback={<User className="h-20 w-20 text-cyan/60" />} />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2">
           <div className="font-display text-base leading-tight">{player.name}</div>

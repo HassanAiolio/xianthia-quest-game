@@ -1,8 +1,9 @@
-import type { Companion, Enemy, GameSnapshot, GameState, Item, Location, LogMessage, Merchant, PendingCheck, Place, Player, Quest } from "@/types/game";
+import type { Battlefield, Companion, Enemy, Epilogue, GameDifficulty, GameSnapshot, GameState, Item, Location, LogMessage, Merchant, PendingCheck, Place, Player, Quest, RunStats } from "@/types/game";
 import { makeId } from "./dice";
+import { createBattlefield } from "./battlefield";
 import { createEnemy } from "./enemies";
 import { STARTER_ITEMS } from "./items";
-import { CHAPTERS, chapterQuest, mainQuestId } from "./story";
+import { CHAPTERS, chapterQuest, drawBeats, mainQuestId } from "./story";
 
 export const STORAGE_KEY = "xianthia-quest:v2";
 const LEGACY_KEY = "xianthia-quest:v1";
@@ -13,6 +14,8 @@ export const DEFAULT_LOCATION: Location = {
     "Black glass walls breathe with veins of cyan light. Somewhere distant, a bell tolls in a frequency only your bones can hear.",
   imageDescription: "vast cathedral of black glass lit by floating cyan glyphs",
 };
+
+export const newStats = (): RunStats => ({ turns: 0, kills: 0, bosses: 0, biggestHit: 0, shardsEarned: 0, started: Date.now() });
 
 export function newSnapshot(): GameSnapshot {
   return {
@@ -34,6 +37,12 @@ export function newSnapshot(): GameSnapshot {
     companion: null,
     visited: [{ ...DEFAULT_LOCATION, chapter: 1 }],
     pendingCheck: null,
+    difficulty: "normal",
+    flags: [],
+    epilogue: null,
+    battlefield: null,
+    beats: drawBeats(1),
+    stats: newStats(),
   };
 }
 
@@ -84,6 +93,12 @@ function migrateEnemy(e: unknown, level: number): Enemy | null {
   return { ...rebuilt, hp: Math.min(rebuilt.maxHp, Math.max(1, Number(e.hp) || rebuilt.maxHp)) };
 }
 
+function migrateBattlefield(raw: unknown, inCombat: boolean, ally: boolean): Battlefield | null {
+  if (!inCombat) return null;
+  if (isObj(raw) && isObj(raw.player) && isObj(raw.enemy) && Array.isArray(raw.cover)) return raw as Battlefield;
+  return createBattlefield(Math.random, { ally });
+}
+
 /** Accepts a v1 or v2 save and returns a complete v2 snapshot (or null if unusable). */
 export function migrate(raw: unknown): GameSnapshot | null {
   if (!isObj(raw)) return null;
@@ -112,6 +127,13 @@ export function migrate(raw: unknown): GameSnapshot | null {
     companion: isObj(raw.companion) && typeof raw.companion.name === "string" ? (raw.companion as Companion) : null,
     visited: Array.isArray(raw.visited) && raw.visited.length ? (raw.visited.filter(isObj) as Place[]) : base.visited,
     pendingCheck: isObj(raw.pendingCheck) && typeof raw.pendingCheck.attempt === "string" ? (raw.pendingCheck as PendingCheck) : null,
+    difficulty: ["story", "normal", "hardcore"].includes(raw.difficulty) ? (raw.difficulty as GameDifficulty) : "normal",
+    flags: Array.isArray(raw.flags) ? raw.flags.filter((f: unknown) => typeof f === "string") : [],
+    epilogue: isObj(raw.epilogue) && typeof raw.epilogue.text === "string" ? (raw.epilogue as Epilogue) : null,
+    // A fight saved before the tactical board existed gets a fresh arena.
+    battlefield: migrateBattlefield(raw.battlefield, Boolean(player && migrateEnemy(raw.currentEnemy, player.level)), isObj(raw.companion)),
+    beats: Array.isArray(raw.beats) ? raw.beats.filter((b: unknown) => typeof b === "string") : drawBeats(Number(raw.chapter) || 1),
+    stats: { ...base.stats, ...(isObj(raw.stats) ? (raw.stats as RunStats) : {}) },
   };
 }
 

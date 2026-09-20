@@ -54,6 +54,10 @@ export interface Enemy {
   damageBonus: number;
   xpReward: number;
   imageDescription: string;
+  /** Difficulty multiplier on the damage this enemy deals (1 = Normal). */
+  damageScale?: number;
+  /** Squares it can strike from; absent means it has to be next to you. */
+  ranged?: number;
   effects?: EnemyEffects;
   /** Rounds fought so far (drives boss special attacks). */
   round?: number;
@@ -133,6 +137,9 @@ export type LogTone = "info" | "roll" | "reward" | "danger" | "error";
 
 export type Difficulty = "easy" | "medium" | "hard" | "extreme";
 
+/** How forgiving the run is; chosen once at character creation. */
+export type GameDifficulty = "story" | "normal" | "hardcore";
+
 /** A check the narrator asked for and the player hasn't rolled yet. */
 export interface PendingCheck {
   stat: StatKey;
@@ -185,6 +192,34 @@ export interface Quest {
   main?: boolean;
 }
 
+/** Tallies for the legend page. Nothing here drives a rule. */
+export interface RunStats {
+  turns: number;
+  kills: number;
+  bosses: number;
+  /** The hardest single round of damage the player dealt. */
+  biggestHit: number;
+  shardsEarned: number;
+  /** When the run began, for "three days ago" style copy. */
+  started: number;
+}
+
+export interface Square {
+  x: number;
+  y: number;
+}
+
+/** Where everyone stands this fight. Rules and generation live in game/battlefield.ts. */
+export interface Battlefield {
+  w: number;
+  h: number;
+  /** Impassable squares that also break line of fire, as "x,y". */
+  cover: string[];
+  player: Square;
+  ally: Square | null;
+  enemy: Square;
+}
+
 export interface GameSnapshot {
   version: 2;
   gameState: GameState;
@@ -211,6 +246,24 @@ export interface GameSnapshot {
   visited: Place[];
   /** The die is in the player's hand until they roll it. */
   pendingCheck: PendingCheck | null;
+  difficulty: GameDifficulty;
+  /** Decisions the world remembers; they pick the ending. */
+  flags: string[];
+  /** Written once the run is over (victory or death). */
+  epilogue: Epilogue | null;
+  /** The tactical board, while a fight is on. */
+  battlefield: Battlefield | null;
+  /** Optional threads drawn for the current chapter. */
+  beats: string[];
+  /** What the run will be remembered by. */
+  stats: RunStats;
+}
+
+export interface Epilogue {
+  /** Ending id from ENDINGS, or "death". */
+  id: string;
+  title: string;
+  text: string;
 }
 
 export interface ClassDefinition {

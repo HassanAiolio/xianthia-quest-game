@@ -75,6 +75,19 @@ export function LandingView() {
           </Button>
         </motion.div>
 
+        {!save && (
+          <motion.ul
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1.1 }}
+            className="mt-10 max-w-md space-y-1.5 text-left text-xs text-muted-foreground"
+          >
+            <li>· Type whatever you want to do. There is no command list.</li>
+            <li>· Risky attempts come down to a die you roll yourself.</li>
+            <li>· Fights, loot and levels are run by real rules — the story just tells you about them.</li>
+          </motion.ul>
+        )}
+
         {status && !status.llm && (
           <p role="alert" className="mt-8 flex max-w-sm items-start gap-2 rounded-lg border border-destructive/40 bg-black/40 p-3 text-left text-xs text-destructive">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />

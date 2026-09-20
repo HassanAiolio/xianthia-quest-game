@@ -118,7 +118,7 @@ export function NarrativeLog({ log, playerName, thinking }: { log: LogMessage[];
         const el = e.currentTarget;
         stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
       }}
-      className="max-h-[55vh] min-h-[240px] flex-1 overflow-y-auto px-4 py-4 lg:max-h-none"
+      className="min-h-[140px] flex-1 overflow-y-auto px-4 py-4 sm:min-h-[240px]"
     >
       <div ref={contentRef} role="log" aria-live="polite" aria-label="Story" className="space-y-3">
         {log.length === 0 && <p className="py-8 text-center text-sm italic text-muted-foreground">Your story begins with a single action.</p>}

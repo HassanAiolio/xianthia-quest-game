@@ -27,6 +27,7 @@ const NARRATE_SCHEMA = obj({
       name: str,
       imageDescription: str,
       tier: { type: "string", enum: ["minion", "standard", "elite", "boss"] },
+      ranged: { type: "boolean" },
     })
   ),
   newLocation: nullable(obj({ name: str, description: str, imageDescription: str })),
@@ -53,6 +54,7 @@ const NARRATE_SCHEMA = obj({
     })
   ),
   shardsFound: int,
+  flagsSet: { type: "array", items: str },
   merchant: nullable(obj({ name: str, description: str })),
   companionJoins: nullable(
     obj({ name: str, role: { type: "string", enum: ["fighter", "healer", "mystic"] }, description: str })
@@ -61,6 +63,7 @@ const NARRATE_SCHEMA = obj({
 });
 
 const COMBAT_SCHEMA = obj({ narrative: str });
+const EPILOGUE_SCHEMA = obj({ epilogue: str });
 const CHRONICLE_SCHEMA = obj({ chronicle: str });
 
 interface TaskSpec {
@@ -83,6 +86,7 @@ export const TASKS = {
   narrate: { models: [BIG, SMALL], schema: NARRATE_SCHEMA, maxTokens: 900, temperature: 0.85 },
   combat: { models: [SMALL, BIG], schema: COMBAT_SCHEMA, maxTokens: 400, temperature: 0.9 },
   chronicle: { models: [SMALL, BIG], schema: CHRONICLE_SCHEMA, maxTokens: 600, temperature: 0.3 },
+  epilogue: { models: [BIG, SMALL], schema: EPILOGUE_SCHEMA, maxTokens: 900, temperature: 0.9 },
 } satisfies Record<string, TaskSpec>;
 
 export type TaskName = keyof typeof TASKS;

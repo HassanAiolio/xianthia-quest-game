@@ -14,9 +14,11 @@ import {
   MIN_STAT,
   STARTING_POINTS,
   type CharacterClass,
+  type GameDifficulty,
   type Stats,
 } from "@/types/game";
 import { makeLog } from "@/game/log";
+import { DIFFICULTIES } from "@/game/difficulty";
 import { baseMaxHp, baseMaxMp, mod } from "@/game/stats";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +32,7 @@ export function CharacterCreationView() {
   const [step, setStep] = useState<Step>(0);
   const [name, setName] = useState("");
   const [appearance, setAppearance] = useState("");
+  const [difficulty, setDifficulty] = useState<GameDifficulty>("normal");
   const [chosenClass, setChosenClass] = useState<CharacterClass | null>(null);
   const [stats, setStats] = useState<Stats>({ str: 0, int: 0, dex: 0, lck: 0 });
   // Generated only on request: each portrait costs image credits.
@@ -93,7 +96,8 @@ export function CharacterCreationView() {
           "AI",
           "You open your eyes. Cyan glyphs drift across walls of black glass. The air tastes of ozone and forgotten names. A single archway pulses ahead — what do you do?"
         ),
-      ]
+      ],
+      difficulty
     );
   }
 
@@ -377,6 +381,32 @@ export function CharacterCreationView() {
                       ))}
                     </div>
                   )}
+
+                  <fieldset>
+                    <legend className="text-xs uppercase tracking-wider text-muted-foreground">How hard should Xianthia be?</legend>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
+                      {Object.values(DIFFICULTIES).map((d) => {
+                        const active = difficulty === d.id;
+                        return (
+                          <button
+                            key={d.id}
+                            type="button"
+                            aria-pressed={active}
+                            onClick={() => setDifficulty(d.id)}
+                            className={cn(
+                              "rounded-xl border p-3 text-left transition-all",
+                              active
+                                ? "border-[var(--gold)] bg-[color-mix(in_oklch,var(--gold)_10%,transparent)] shadow-[var(--shadow-glow-gold)]"
+                                : "border-border bg-[var(--card)] hover:border-cyan/40"
+                            )}
+                          >
+                            <span className="font-display text-sm text-foreground">{d.label}</span>
+                            <p className="mt-1 text-[11px] leading-tight text-muted-foreground">{d.blurb}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </fieldset>
                 </motion.div>
               )}
             </AnimatePresence>

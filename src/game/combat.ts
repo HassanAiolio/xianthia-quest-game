@@ -10,7 +10,26 @@ export type CombatAction =
   | { kind: "ability"; abilityId?: AbilityId }
   | { kind: "defend" }
   | { kind: "flee" }
-  | { kind: "item"; itemId: string };
+  | { kind: "item"; itemId: string }
+  /** All movement, no swing: the tactical board's "dash". */
+  | { kind: "dash" };
+
+/**
+ * What the board says about this round. Positions are resolved in the engine;
+ * combat only needs to know who can reach whom and what is in the way.
+ */
+export interface Tactics {
+  /** AC the enemy gains from cover against the player. */
+  enemyCover: number;
+  /** AC the player gains from cover against the enemy. */
+  playerCover: number;
+  /** Who the enemy can hit from where it ended its move; empty means it spent the round closing in. */
+  enemyReaches: ("player" | "companion")[];
+  /** A boss blast still lands from a few squares away. */
+  specialInRange: boolean;
+  /** The companion can reach the enemy with its own attack. */
+  allyInRange: boolean;
+}
 
 export interface AttackRoll {
   /** Every d20 rolled (two with advantage or disadvantage). */
@@ -42,12 +61,12 @@ export interface CombatRound {
   item?: { name: string; hp: number; mp: number };
   flee?: { natural: number; bonus: number; dc: number; success: boolean };
   defended: boolean;
-  companion?: { name: string; kind: "attack" | "heal" | "hex" | "bolt"; roll?: AttackRoll; damage: number; heal: number };
+  companion?: { name: string; kind: "attack" | "heal" | "hex" | "bolt" | "advance"; roll?: AttackRoll; damage: number; heal: number };
   phaseChange?: { name: string; description: string };
   enemyAttack?: AttackRoll & { disadvantage: boolean; victim: "player" | "companion"; dodged?: boolean };
   enemySpecial?: { name: string; damage: number; companionDamage: number; mpDrain: number; heal: number; halved: boolean };
   /** Why the enemy did not act this round. */
-  enemySkipped?: "defeated" | "fled" | "stunned";
+  enemySkipped?: "defeated" | "fled" | "stunned" | "closing";
   /** Bulwark riposte damage. */
   counter?: number;
   damageDealt: number;
@@ -80,13 +99,30 @@ function attackRoll(rng: Rng, bonus: number, target: number, critFrom: number, d
   return { rolls, natural, bonus, target, hit, crit, damage: hit ? Math.max(1, damage(crit)) : 0 };
 }
 
+/** The free swing the player gets when a shooter backs out of sword range. */
+export function playerOpportunityAttack(player: Player, inventory: Item[], enemy: Enemy, rng: Rng = Math.random): AttackRoll {
+  const stats = effectiveStats(player, inventory);
+  const pMod = mod(primaryStat(player, inventory));
+  const weapon = (crit: boolean) => (crit ? rollDice(2, 8, rng) : roll(8, rng)) + pMod + player.level;
+  return attackRoll(rng, playerAttackBonus(player, inventory), enemy.ac, critThreshold(stats.lck), weapon);
+}
+
+/** The free swing you hand a melee enemy by walking out of its reach. */
+export function opportunityAttack(player: Player, inventory: Item[], enemy: Enemy, rng: Rng = Math.random): AttackRoll {
+  const scale = enemy.damageScale ?? 1;
+  const damage = (crit: boolean) =>
+    Math.max(1, Math.round(((crit ? rollDice(2, enemy.damageDie, rng) : roll(enemy.damageDie, rng)) + enemy.damageBonus) * scale));
+  return attackRoll(rng, enemy.attackBonus, playerAC(player, inventory), 20, damage);
+}
+
 export function resolveCombatRound(
   player: Player,
   inventory: Item[],
   enemy: Enemy,
   requested: CombatAction,
   rng: Rng = Math.random,
-  companion: Companion | null = null
+  companion: Companion | null = null,
+  tactics: Tactics | null = null
 ): CombatRound {
   const stats = effectiveStats(player, inventory);
   const pMod = mod(primaryStat(player, inventory));
@@ -110,6 +146,8 @@ export function resolveCombatRound(
     }
   }
 
+  // Cover is worth +2 AC either way, exactly as at the table.
+  const enemyAc = enemy.ac + (tactics?.enemyCover ?? 0);
   const effects: EnemyEffects = { ...(enemy.effects ?? {}) };
   const roundNo = (enemy.round ?? 0) + 1;
   let phase = enemy.phase;
@@ -140,7 +178,7 @@ export function resolveCombatRound(
   if (enemyHp > 0) {
     switch (action.kind) {
       case "attack": {
-        const a = attackRoll(rng, playerAttackBonus(player, inventory), enemy.ac, critThreshold(stats.lck), weapon);
+        const a = attackRoll(rng, playerAttackBonus(player, inventory), enemyAc, critThreshold(stats.lck), weapon);
         round.playerAttack = a;
         hurt(a.damage);
         break;
@@ -178,7 +216,7 @@ export function resolveCombatRound(
           case "ghost-step": {
             info.effect = "dodge";
             dodge = true;
-            const a = attackRoll(rng, playerAttackBonus(player, inventory), enemy.ac, critThreshold(stats.lck), weapon, "advantage");
+            const a = attackRoll(rng, playerAttackBonus(player, inventory), enemyAc, critThreshold(stats.lck), weapon, "advantage");
             round.playerAttack = a;
             info.damage = hurt(a.damage);
             break;
@@ -219,6 +257,8 @@ export function resolveCombatRound(
       case "defend":
         mpChange += DEFEND_MP_GAIN;
         break;
+      case "dash":
+        break; // the running already happened on the board
       case "item":
         heal += item!.effect?.hp ?? 0;
         mpChange += item!.effect?.mp ?? 0;
@@ -238,15 +278,18 @@ export function resolveCombatRound(
 
   // ── Companion turn ──────────────────────────────────────────────────────────
   const ally = companion && !companion.down ? companion : null;
+  const allyInRange = tactics ? tactics.allyInRange : true;
   if (ally && enemyHp > 0 && !round.fled) {
     const cl = ally.level;
-    if (ally.role === "fighter") {
-      const a = attackRoll(rng, 3 + Math.floor(cl / 2), enemy.ac, 20, (crit) => (crit ? rollDice(2, 6, rng) : roll(6, rng)) + 1 + Math.floor(cl / 2));
-      round.companion = { name: ally.name, kind: "attack", roll: a, damage: hurt(a.damage), heal: 0 };
-    } else if (ally.role === "healer" && player.hp + heal < player.maxHp / 2) {
+    if (ally.role === "healer" && player.hp + heal < player.maxHp / 2) {
       const h = roll(6, rng) + 2 + cl;
       heal += h;
       round.companion = { name: ally.name, kind: "heal", damage: 0, heal: h };
+    } else if (!allyInRange) {
+      round.companion = { name: ally.name, kind: "advance", damage: 0, heal: 0 };
+    } else if (ally.role === "fighter") {
+      const a = attackRoll(rng, 3 + Math.floor(cl / 2), enemy.ac, 20, (crit) => (crit ? rollDice(2, 6, rng) : roll(6, rng)) + 1 + Math.floor(cl / 2));
+      round.companion = { name: ally.name, kind: "attack", roll: a, damage: hurt(a.damage), heal: 0 };
     } else if (ally.role === "healer") {
       const a = attackRoll(rng, 1 + Math.floor(cl / 3), enemy.ac, 20, () => roll(4, rng) + Math.floor(cl / 2));
       round.companion = { name: ally.name, kind: "attack", roll: a, damage: hurt(a.damage), heal: 0 };
@@ -275,25 +318,32 @@ export function resolveCombatRound(
   else if (effects.stunned) {
     round.enemySkipped = "stunned";
     effects.stunned = false;
-  } else if (phase === 2 && enemy.bossPhase && roundNo % 2 === 0) {
+  } else if (phase === 2 && enemy.bossPhase && roundNo % 2 === 0 && (tactics?.specialInRange ?? true)) {
     const sp = enemy.bossPhase.special;
     const halved = round.defended || bulwark;
-    const raw = rollDice(sp.dice, sp.sides, rng) + enemy.level;
+    const raw = Math.max(1, Math.round((rollDice(sp.dice, sp.sides, rng) + enemy.level) * (enemy.damageScale ?? 1)));
     damageToPlayer = halved ? Math.ceil(raw / 2) : raw;
     damageToAlly = ally ? Math.ceil(raw / 2) : 0;
     drain = sp.mpDrain ?? 0;
     const regain = sp.heal ? Math.min(enemy.maxHp - enemyHp, Math.round(enemy.maxHp * sp.heal)) : 0;
     enemyHp += regain;
     round.enemySpecial = { name: sp.name, damage: damageToPlayer, companionDamage: damageToAlly, mpDrain: drain, heal: regain, halved };
+  } else if (tactics && tactics.enemyReaches.length === 0) {
+    round.enemySkipped = "closing";
   } else {
     if ((effects.slowed ?? 0) > 0) enemyMode = "disadvantage";
-    const damage = (crit: boolean) => (crit ? rollDice(2, enemy.damageDie, rng) : roll(enemy.damageDie, rng)) + damageBonus;
-    if (ally && rng() < 0.3) {
+    // The difficulty scale applies to the whole blow, so it still bites at level 1.
+    const scale = enemy.damageScale ?? 1;
+    const damage = (crit: boolean) =>
+      Math.max(1, Math.round(((crit ? rollDice(2, enemy.damageDie, rng) : roll(enemy.damageDie, rng)) + damageBonus) * scale));
+    const reachesAlly = !tactics || tactics.enemyReaches.includes("companion");
+    const reachesPlayer = !tactics || tactics.enemyReaches.includes("player");
+    if (ally && reachesAlly && (!reachesPlayer || rng() < 0.3)) {
       const a = attackRoll(rng, attackBonus, companionAC(ally), 20, damage, enemyMode);
       round.enemyAttack = { ...a, disadvantage: enemyMode === "disadvantage", victim: "companion" };
       damageToAlly = a.damage;
     } else {
-      const target = playerAC(player, inventory, round.defended) + (bulwark ? 8 : 0);
+      const target = playerAC(player, inventory, round.defended) + (bulwark ? 8 : 0) + (tactics?.playerCover ?? 0);
       const a = attackRoll(rng, attackBonus, target, 20, damage, enemyMode);
       if (dodge && a.hit) {
         round.enemyAttack = { ...a, hit: false, crit: false, damage: 0, disadvantage: enemyMode === "disadvantage", victim: "player", dodged: true };
@@ -321,14 +371,30 @@ export function resolveCombatRound(
 }
 
 /** Plain-text dice lines for the log, e.g. "Attack: d20 14 +4 = 18 vs AC 12 — HIT, 9 damage". */
+/** "Attack: d20 14 +4 = 18 vs AC 12 - HIT, 9 damage" */
+export function describeAttack(label: string, a: AttackRoll, extra = ""): string {
+  const dice = a.rolls.length > 1 ? `d20 [${a.rolls.join(", ")}]→${a.natural}` : `d20 ${a.natural}`;
+  const verdict = a.crit ? "CRITICAL HIT" : a.hit ? "HIT" : "MISS";
+  const dmg = a.hit ? `, ${a.damage} damage` : "";
+  return `${label}: ${dice} +${a.bonus} = ${a.natural + a.bonus} vs AC ${a.target}${extra} — ${verdict}${dmg}`;
+}
+
+/** The same roll, shaped for the dice animation. */
+export function attackDie(who: DiceRoll["who"], label: string, a: AttackRoll): DiceRoll {
+  return {
+    who,
+    kind: "attack",
+    label,
+    natural: a.natural,
+    bonus: a.bonus,
+    target: a.target,
+    outcome: a.crit ? "critical" : a.hit ? "success" : a.natural === 1 ? "fumble" : "failure",
+  };
+}
+
 export function describeRound(round: CombatRound, enemy: Enemy): string[] {
   const lines: string[] = [];
-  const fmt = (label: string, a: AttackRoll, extra = "") => {
-    const dice = a.rolls.length > 1 ? `d20 [${a.rolls.join(", ")}]→${a.natural}` : `d20 ${a.natural}`;
-    const verdict = a.crit ? "CRITICAL HIT" : a.hit ? "HIT" : "MISS";
-    const dmg = a.hit ? `, ${a.damage} damage` : "";
-    return `${label}: ${dice} +${a.bonus} = ${a.natural + a.bonus} vs AC ${a.target}${extra} — ${verdict}${dmg}`;
-  };
+  const fmt = describeAttack;
 
   if (round.poisonTick) lines.push(`Poison burns ${enemy.name} for ${round.poisonTick}.`);
   if (round.abilityFizzled) lines.push(`Not enough MP for that ability — you strike normally.`);
@@ -380,6 +446,8 @@ export function describeRound(round: CombatRound, enemy: Enemy): string[] {
     lines.push(e.dodged ? line.replace(/— .*$/, "— DODGED") : line);
   }
   if (round.enemySkipped === "stunned") lines.push(`${enemy.name} is frozen in time and cannot act.`);
+  if (round.enemySkipped === "closing") lines.push(`${enemy.name} closes the distance instead of striking.`);
+  if (round.companion?.kind === "advance") lines.push(`${round.companion.name} moves up.`);
   if (round.counter) lines.push(`Bulwark riposte: ${round.counter} damage.`);
   if (round.companionDown) lines.push(`${c?.name ?? "Your companion"} is down!`);
   if (round.enemyDefeated) lines.push(`${enemy.name} is defeated.`);
@@ -389,15 +457,7 @@ export function describeRound(round: CombatRound, enemy: Enemy): string[] {
 /** The round's d20s as structured data, for the dice animation. */
 export function roundDice(round: CombatRound, enemy: Enemy): DiceRoll[] {
   const dice: DiceRoll[] = [];
-  const attack = (who: DiceRoll["who"], label: string, a: AttackRoll): DiceRoll => ({
-    who,
-    kind: "attack",
-    label,
-    natural: a.natural,
-    bonus: a.bonus,
-    target: a.target,
-    outcome: a.crit ? "critical" : a.hit ? "success" : a.natural === 1 ? "fumble" : "failure",
-  });
+  const attack = attackDie;
   if (round.playerAttack) dice.push(attack("player", round.ability?.id === "ghost-step" ? "Shadow strike" : "Your attack", round.playerAttack));
   if (round.flee) {
     const f = round.flee;

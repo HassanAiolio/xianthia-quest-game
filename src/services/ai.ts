@@ -1,6 +1,6 @@
 import type { ChatMessage } from "@/game/prompts";
 
-export type AiTask = "narrate" | "combat" | "chronicle";
+export type AiTask = "narrate" | "combat" | "chronicle" | "epilogue";
 /** Injected into the engine so tests can replace the network. */
 export type AiRunner = (task: AiTask, messages: ChatMessage[]) => Promise<unknown>;
 

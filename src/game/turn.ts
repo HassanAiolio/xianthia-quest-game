@@ -1,9 +1,10 @@
-import { classDef, type Companion, type Enemy, type GameSnapshot, type Item, type Location, type LogMessage, type LogTone, type Merchant, type PendingCheck, type Quest } from "@/types/game";
+import { classDef, type Battlefield, type Companion, type Enemy, type GameSnapshot, type Item, type Location, type LogMessage, type LogTone, type Merchant, type PendingCheck, type Quest } from "@/types/game";
 import { abilitiesGained } from "./abilities";
 import { levelCompanion } from "./companions";
+import { NEAR_DEATH_HP, NEAR_DEATH_SHARD_LOSS, rulesFor } from "./difficulty";
 import { clamp } from "./dice";
 import { INVENTORY_CAP, xpToNext } from "./stats";
-import { chapterQuest, getChapter, mainQuestId } from "./story";
+import { chapterQuest, drawBeats, getChapter, mainQuestId } from "./story";
 
 export const MAX_LOG_ENTRIES = 400;
 
@@ -39,6 +40,14 @@ export interface TurnResult {
   merchant?: Merchant | null;
   /** undefined = unchanged, null = the die has been rolled. */
   pendingCheck?: PendingCheck | null;
+  /** Story flags earned this turn. */
+  flags?: string[];
+  /** undefined = unchanged, null = the fight is over and the board is put away. */
+  battlefield?: Battlefield | null;
+  /** An enemy died this turn. */
+  kill?: boolean;
+  /** Damage the player dealt this round, for the "biggest hit" line. */
+  damageDealt?: number;
 }
 
 export function applyTurn(state: GameSnapshot, r: TurnResult): GameSnapshot {
@@ -55,7 +64,22 @@ export function applyTurn(state: GameSnapshot, r: TurnResult): GameSnapshot {
   const player = { ...state.player };
   player.hp = clamp(player.hp + (r.hpDelta ?? 0), 0, player.maxHp);
   player.mp = clamp(player.mp + (r.mpDelta ?? 0), 0, player.maxMp);
-  const dead = player.hp <= 0;
+
+  // Story mode pulls the player back from a killing blow; it costs shards, not the run.
+  let shardsLost = 0;
+  let dead = player.hp <= 0;
+  if (dead && !rulesFor(state.difficulty).permadeath) {
+    dead = false;
+    player.hp = Math.max(1, Math.ceil(player.maxHp * NEAR_DEATH_HP));
+    shardsLost = Math.floor(state.shards * NEAR_DEATH_SHARD_LOSS);
+    logs.push(
+      note(
+        "spared",
+        `The Rift refuses you. You wake at death's door with ${player.hp} HP${shardsLost ? `, ${shardsLost} shards lighter` : ""}.`,
+        "danger"
+      )
+    );
+  }
 
   const removed = new Set(r.removeItemIds ?? []);
   const inventory = state.inventory.filter((i) => !removed.has(i.id));
@@ -135,12 +159,23 @@ export function applyTurn(state: GameSnapshot, r: TurnResult): GameSnapshot {
     chapter,
     turnsInChapter,
     currentEnemy: r.enemy === undefined ? state.currentEnemy : r.enemy,
+    battlefield: r.battlefield === undefined ? state.battlefield : r.battlefield,
+    beats: chapter === state.chapter ? state.beats : drawBeats(chapter),
+    stats: {
+      ...state.stats,
+      turns: state.stats.turns + 1,
+      kills: state.stats.kills + (r.kill ? 1 : 0),
+      bosses: state.stats.bosses + (r.chapterComplete ? 1 : 0),
+      biggestHit: Math.max(state.stats.biggestHit, r.damageDealt ?? 0),
+      shardsEarned: state.stats.shardsEarned + Math.max(0, r.shardsDelta ?? 0),
+    },
     currentLocation: location,
     visited,
     merchant,
     companion,
     pendingCheck: r.pendingCheck === undefined ? state.pendingCheck : r.pendingCheck,
-    shards: Math.max(0, state.shards + (r.shardsDelta ?? 0)),
+    flags: r.flags?.length ? [...new Set([...state.flags, ...r.flags])] : state.flags,
+    shards: Math.max(0, state.shards + (r.shardsDelta ?? 0) - shardsLost),
     suggestions: r.suggestions ?? state.suggestions,
     gameLog: [...state.gameLog, ...logs].slice(-MAX_LOG_ENTRIES),
     // Death wins over everything else the turn asked for.

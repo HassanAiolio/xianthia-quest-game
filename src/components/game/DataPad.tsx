@@ -4,8 +4,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EnemyCard } from "@/components/game/EnemyCard";
 import { AbilityList } from "@/components/game/AbilityList";
 import { InventoryPanel } from "@/components/game/InventoryPanel";
+import { LegendButton } from "@/components/game/LegendDialog";
 import { TradePanel } from "@/components/game/TradePanel";
 import { useGameStore } from "@/hooks/useGameStore";
+import { choiceLabel } from "@/game/story";
 import type { Item, Quest } from "@/types/game";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +34,7 @@ function QuestCard({ q }: { q: Quest }) {
   );
 }
 
-export function DataPad({ busy, onUseItem }: { busy: boolean; onUseItem: (item: Item) => void }) {
+export function DataPad({ busy, onUseItem, className }: { busy: boolean; onUseItem: (item: Item) => void; className?: string }) {
   const { state } = useGameStore();
   const trading = state.merchant !== null;
   const [tab, setTab] = useState("inventory");
@@ -46,7 +48,12 @@ export function DataPad({ busy, onUseItem }: { busy: boolean; onUseItem: (item: 
   );
 
   return (
-    <aside className="glass-strong order-3 flex flex-col gap-4 rounded-2xl p-4 lg:h-full lg:overflow-y-auto [&::-webkit-scrollbar]:hidden">
+    <aside
+      className={cn(
+        "glass-strong order-3 flex min-h-0 flex-col gap-4 overflow-y-auto rounded-2xl p-4 lg:h-full [&::-webkit-scrollbar]:hidden",
+        className
+      )}
+    >
       {state.gameState === "COMBAT" && state.currentEnemy && <EnemyCard enemy={state.currentEnemy} />}
 
       <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
@@ -90,7 +97,24 @@ export function DataPad({ busy, onUseItem }: { busy: boolean; onUseItem: (item: 
           ))}
         </TabsContent>
 
-        <TabsContent value="chronicle" className="mt-3 flex-1 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden">
+        <TabsContent value="chronicle" className="mt-3 flex-1 space-y-3 overflow-y-auto pr-1 [&::-webkit-scrollbar]:hidden">
+          {state.player && <LegendButton className="w-full border-[var(--gold)]/40 text-[var(--gold)]" />}
+          {state.epilogue && (
+            <div className="rounded-lg border border-[var(--gold)]/40 bg-[color-mix(in_oklch,var(--gold)_6%,transparent)] p-3">
+              <h3 className="text-[10px] uppercase tracking-wider text-[var(--gold)]">Your ending — {state.epilogue.title}</h3>
+              <p className="mt-1.5 whitespace-pre-line text-xs leading-relaxed text-foreground/90">{state.epilogue.text}</p>
+            </div>
+          )}
+          {state.flags.length > 0 && (
+            <div className="rounded-lg border border-[var(--gold)]/30 bg-black/20 p-3">
+              <h3 className="text-[10px] uppercase tracking-wider text-[var(--gold)]">What you did</h3>
+              <ul className="mt-1.5 space-y-1 text-xs text-foreground/90">
+                {state.flags.map((f) => (
+                  <li key={f}>· {choiceLabel(f)}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {state.chronicle ? (
             <div className="whitespace-pre-line rounded-lg border border-glass-border bg-black/20 p-3 text-xs leading-relaxed text-foreground/90">
               {state.chronicle}
